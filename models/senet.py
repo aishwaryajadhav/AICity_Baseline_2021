@@ -322,7 +322,7 @@ class SENet(nn.Module):
             downsample_kernel_size=downsample_kernel_size,
             downsample_padding=downsample_padding
         )
-        self.avg_pool = nn.AdaptiveAvgPool2d((1,1))
+        self.avg_pool = nn.AdaptiveAvgPool2d((1,1)) #output of sixe 1*1*input_channels
         self.dropout = nn.Dropout(dropout_p) if dropout_p is not None else None
         self.last_linear = nn.Linear(512 * block.expansion, num_classes)
 
@@ -365,7 +365,7 @@ class SENet(nn.Module):
     def forward(self, x,avg = True):
         x = self.features(x)
         if avg:
-            x = self.avg_pool(x)
+            x = self.avg_pool(x) #1x1x(channels = 2048)
         # x = self.logits(x)
         return x
 

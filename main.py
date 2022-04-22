@@ -4,19 +4,20 @@ import os
 import sys
 from datetime import datetime
 import argparse
+from xmlrpc.client import boolean
 import torch
 import torch.distributed as dist
 import torch.multiprocessing
 import torch.multiprocessing as mp
-from absl import flags
+# from absl import flags
 from torch.nn.parallel import DistributedDataParallel
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
 
 from config import get_default_config
-from models.siamese_baseline import SiameseBaselineModelv1,SiameseLocalandMotionModelBIG
-from utils import TqdmToLogger, get_logger,AverageMeter,accuracy,ProgressMeter
+from models.siamese_baseline import SiameseBaselineModelv1,SiameseLocalandMotionModelBIG,SiameseNewStage1
+from utils import TqdmToLogger, get_logger,AverageMeter,accuracy,ProgressMeter,load_new_model_from_checkpoint
 from datasets import CityFlowNLDataset
 from datasets import CityFlowNLInferenceDataset
 from torch.optim.lr_scheduler import _LRScheduler
@@ -60,7 +61,7 @@ class WarmUpLR(_LRScheduler):
         self.lr_scheduler.load_state_dict(lr_scheduler)
 
 best_top1_eval = 0.
-def evaluate(model,valloader,epoch,cfg,index=2):
+def evaluate(model,valloader,epoch,cfg,index=0):
     global best_top1_eval
     print("Test::::")
     model.eval()
@@ -117,7 +118,7 @@ def evaluate(model,valloader,epoch,cfg,index=2):
 
 
 parser = argparse.ArgumentParser(description='AICT5 Training')
-parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
+parser.add_argument('--load_existing', default=False, type=boolean)
 parser.add_argument('--config', default="configs/baseline.yaml", type=str,
                     help='config_file')
 parser.add_argument('--name', default="baseline", type=str,
@@ -127,8 +128,10 @@ args = parser.parse_args()
 cfg = get_default_config()
 cfg.merge_from_file(args.config)
 
+
 transform_train = torchvision.transforms.Compose([
-    torchvision.transforms.RandomResizedCrop(cfg.DATA.SIZE, scale=(0.8, 1.)),
+    # torchvision.transforms.RandomResizedCrop(cfg.DATA.SIZE, scale=(0.8, 1.)),
+    torchvision.transforms.Resize((cfg.DATA.SIZE,cfg.DATA.SIZE)),
     torchvision.transforms.RandomApply([torchvision.transforms.RandomRotation(10)],p=0.5),
     torchvision.transforms.ToTensor(),
     torchvision.transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
@@ -138,8 +141,6 @@ transform_test = torchvision.transforms.Compose([
     torchvision.transforms.ToTensor(),
     torchvision.transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
 ])
-
-
 
 use_cuda = True
 train_data=CityFlowNLDataset(cfg.DATA, json_path = cfg.DATA.TRAIN_JSON_PATH, transform=transform_test)
@@ -152,15 +153,21 @@ if cfg.MODEL.NAME == "base":
     model = SiameseBaselineModelv1(cfg.MODEL)
 elif cfg.MODEL.NAME == "dual-stream":
     model = SiameseLocalandMotionModelBIG(cfg.MODEL)
+elif cfg.MODEL.NAME == "new":
+    model = SiameseNewStage1(cfg.MODEL)
+
 else:
-    assert cfg.MODEL.NAME in ["base","dual-stream"] , "unsupported model"
-if args.resume:
-    checkpoint = torch.load(cfg.EVAL.RESTORE_FROM)
-    new_state_dict = OrderedDict()
-    for k, v in checkpoint['state_dict'].items():
-        name = k[7:] # remove `module.`
-        new_state_dict[name] = v
-    model.load_state_dict(new_state_dict)
+    assert cfg.MODEL.NAME in ["base","dual-stream","new"] , "unsupported model"
+if args.load_existing:
+    if(cfg.MODEL.NAME == "new"):
+        model = load_new_model_from_checkpoint(model, cfg.MODEL.CHECKPOINT)
+    else:
+        checkpoint = torch.load(cfg.EVAL.RESTORE_FROM)
+        new_state_dict = OrderedDict()
+        for k, v in checkpoint['state_dict'].items():
+            name = k[7:] # remove `module.`
+            new_state_dict[name] = v
+        model.load_state_dict(new_state_dict)
 if use_cuda:
     model.cuda()
     model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
@@ -209,7 +216,7 @@ for epoch in range(cfg.TRAIN.EPOCH):
             else:
                 pairs,logit_scale,cls_logits = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),image.cuda())
             logit_scale = logit_scale.mean().exp()
-            loss =0 
+            loss = 0 
  
             for visual_embeds,lang_embeds in pairs:
                 sim_i_2_t = torch.matmul(torch.mul(logit_scale, visual_embeds), torch.t(lang_embeds))

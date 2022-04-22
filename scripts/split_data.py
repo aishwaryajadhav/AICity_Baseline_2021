@@ -1,8 +1,11 @@
 import os
+import os.path as osp
 import json
+import sys
 import random
 random.seed(888)
-with open("data/train-tracks.json") as f:
+
+with open(sys.argv[1]) as f:
     tracks_train = json.load(f)
 
 keys = list(tracks_train.keys())
@@ -13,7 +16,10 @@ for key in keys[:100]:
 	val_data[key] = tracks_train[key]
 for key in keys[100:]:
 	train_data[key] = tracks_train[key]
-with open("data/train.json", "w") as f:
+
+data_folder = "/".join(sys.argv[1].split('/')[:-1])
+
+with open(osp.join(data_folder, "train.json"), "w") as f:
     json.dump(train_data, f,indent=4)
-with open("data/val.json", "w") as f:
+with open(osp.join(data_folder, "val.json"), "w") as f:
     json.dump(val_data, f,indent=4)

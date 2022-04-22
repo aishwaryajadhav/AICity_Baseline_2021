@@ -57,6 +57,7 @@ class SiameseBaselineModelv1(torch.nn.Module):
     def __init__(self, model_cfg):
         super().__init__()
         self.model_cfg = model_cfg
+        
         self.backbone = resnet50(pretrained=False,
                                  num_classes=model_cfg.OUTPUT_SIZE)
         state_dict = torch.load(self.model_cfg.RESNET_CHECKPOINT,
@@ -73,7 +74,7 @@ class SiameseBaselineModelv1(torch.nn.Module):
         img_dim = 1024
         self.domian_fc1 = nn.Sequential(nn.Linear(lang_dim, lang_dim), nn.ReLU(), nn.Linear(lang_dim, 1024))
         self.domian_fc2 = nn.Sequential(nn.ReLU(),nn.Linear(img_dim, img_dim))
-        self.domian_cls = nn.Sequential(nn.Linear(img_dim, img_dim), nn.ReLU(),nn.Linear(img_dim, 2498))
+        self.domian_cls = nn.Sequential(nn.Linear(img_dim, img_dim), nn.ReLU(),nn.Linear(img_dim, 2498)) #classification logits - 2498 tracks
 
     def encode_text(self,nl_input_ids,nl_attention_mask):
         outputs = self.bert_model(nl_input_ids,
@@ -130,19 +131,26 @@ class SiameseLocalandMotionModelBIG(torch.nn.Module):
             p.requires_grad = False
         self.logit_scale = nn.Parameter(torch.ones(()), requires_grad=True)
         
-        self.domian_vis_fc_merge = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.BatchNorm1d(embed_dim),nn.ReLU(), nn.Linear(embed_dim, embed_dim))
-        self.vis_car_fc = nn.Sequential(nn.BatchNorm1d(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim//2))
-        self.lang_car_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim//2))
-        self.vis_motion_fc = nn.Sequential(nn.BatchNorm1d(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim//2))
-        self.lang_motion_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim//2))
+        self.domian_vis_fc_merge = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.BatchNorm1d(embed_dim),nn.ReLU(), nn.Linear(embed_dim, embed_dim))  #proj layer of concat vis features
 
-        self.domian_lang_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, embed_dim))
+        self.vis_car_fc = nn.Sequential(nn.BatchNorm1d(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim//2)) #proj layer of car features
+
+        self.lang_car_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim//2)) #proj layer for language and car contrastive loss
+
+        self.vis_motion_fc = nn.Sequential(nn.BatchNorm1d(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim//2)) #proj layer of motion features
+
+        self.lang_motion_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim//2)) #proj layer of lang and motion features
+
+        self.domian_lang_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, embed_dim)) # Lang base proj layer
+
         if self.model_cfg.car_idloss:
-            self.id_cls = nn.Sequential(nn.Linear(embed_dim, embed_dim),nn.BatchNorm1d(embed_dim), nn.ReLU(),nn.Linear(embed_dim, self.model_cfg.NUM_CLASS))
+            self.id_cls = nn.Sequential(nn.Linear(embed_dim, embed_dim),nn.BatchNorm1d(embed_dim), nn.ReLU(),nn.Linear(embed_dim, self.model_cfg.NUM_CLASS)) #car classification head proj layer
+
         if self.model_cfg.mo_idloss:   
-            self.id_cls2 = nn.Sequential(nn.Linear(embed_dim, embed_dim),nn.BatchNorm1d(embed_dim), nn.ReLU(),nn.Linear(embed_dim, self.model_cfg.NUM_CLASS))
+            self.id_cls2 = nn.Sequential(nn.Linear(embed_dim, embed_dim),nn.BatchNorm1d(embed_dim), nn.ReLU(),nn.Linear(embed_dim, self.model_cfg.NUM_CLASS)) #motion classification head proj layer
+
         if self.model_cfg.share_idloss:  
-            self.id_cls3 = nn.Sequential(nn.Linear(embed_dim, embed_dim),nn.BatchNorm1d(embed_dim), nn.ReLU(),nn.Linear(embed_dim, self.model_cfg.NUM_CLASS))
+            self.id_cls3 = nn.Sequential(nn.Linear(embed_dim, embed_dim),nn.BatchNorm1d(embed_dim), nn.ReLU(),nn.Linear(embed_dim, self.model_cfg.NUM_CLASS)) #shared classification head proj layer
 
     def encode_text(self,nl_input_ids,nl_attention_mask):
         outputs = self.bert_model(nl_input_ids,
@@ -153,7 +161,7 @@ class SiameseLocalandMotionModelBIG(torch.nn.Module):
         return lang_embeds
 
     def encode_images(self,crops,motion):
-        visual_embeds = self.domian_vis_fc(self.vis_backbone(crops))
+        visual_embeds = self.domian_vis_fc(self.vis_backbone(crops)) # embed_dim x 1 x 1
         visual_embeds = visual_embeds.view(visual_embeds.size(0), -1)
         motion_embeds = self.domian_vis_fc_bk(self.vis_backbone_bk(motion))
         motion_embeds = motion_embeds.view(motion_embeds.size(0), -1)
@@ -194,3 +202,102 @@ class SiameseLocalandMotionModelBIG(torch.nn.Module):
         visual_merge_embeds, lang_merge_embeds,visual_car_embeds,lang_car_embeds,visual_mo_embeds,lang_mo_embeds = map(lambda t: F.normalize(t, p = 2, dim = -1), (visual_merge_embeds, lang_embeds,visual_car_embeds,lang_car_embeds,visual_mo_embeds,lang_mo_embeds))
 
         return [(visual_car_embeds,lang_car_embeds),(visual_mo_embeds,lang_mo_embeds),(visual_merge_embeds, lang_merge_embeds)],self.logit_scale,cls_logits_results
+
+
+class SiameseNewStage1(torch.nn.Module):
+    def __init__(self, model_cfg):
+        super().__init__()
+        self.model_cfg = model_cfg
+        embed_dim = self.model_cfg.EMBED_DIM
+        if self.model_cfg.IMG_ENCODER in  supported_img_encoders:
+            if self.model_cfg.IMG_ENCODER == "se_resnext50_32x4d":
+                self.vis_backbone = se_resnext50_32x4d()
+                self.img_in_dim = 2048
+                self.domian_vis_fc = nn.Conv2d(self.img_in_dim, embed_dim,kernel_size=1)    #base visual proj layer
+                
+            else:
+                self.vis_backbone = EfficientNet.from_pretrained(self.model_cfg.IMG_ENCODER)
+                self.img_in_dim = self.vis_backbone.out_channels
+                self.domian_vis_fc = nn.Linear(self.img_in_dim, embed_dim) #base visual proj layer
+
+        else:
+            assert self.model_cfg.IMG_ENCODER in supported_img_encoders, "unsupported img encoder"
+
+        self.bert_model = RobertaModel.from_pretrained(model_cfg.BERT_NAME)
+        for p in  self.bert_model.parameters():
+            p.requires_grad = False
+        self.logit_scale = nn.Parameter(torch.ones(()), requires_grad=True)
+       
+
+        self.vis_car_fc = nn.Sequential(nn.BatchNorm1d(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim//2)) #proj layer of car features (for contrastive loss)
+
+        self.lang_car_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim//2)) #proj layer for language and car contrastive loss
+
+        self.domian_lang_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, embed_dim)) # Lang base proj layer
+
+        if self.model_cfg.car_idloss:
+            self.id_cls = nn.Sequential(nn.Linear(embed_dim, embed_dim),nn.BatchNorm1d(embed_dim), nn.ReLU(),nn.Linear(embed_dim, self.model_cfg.NUM_CLASS)) #car classification head proj layer
+
+        if self.model_cfg.lang_idloss:
+            self.id_cls2 = nn.Sequential(nn.Linear(embed_dim, embed_dim),nn.BatchNorm1d(embed_dim), nn.ReLU(),nn.Linear(embed_dim, self.model_cfg.NUM_CLASS)) #lang classification head proj layer
+
+        if self.model_cfg.share_idloss:  
+            self.id_cls3 = nn.Sequential(nn.Linear(embed_dim, embed_dim),nn.BatchNorm1d(embed_dim), nn.ReLU(),nn.Linear(embed_dim, self.model_cfg.NUM_CLASS)) #shared classification head proj layer
+
+    def encode_text(self,nl_input_ids,nl_attention_mask):
+        outputs = self.bert_model(nl_input_ids,
+                                  attention_mask=nl_attention_mask)
+        lang_embeds = torch.mean(outputs.last_hidden_state, dim=1)
+        lang_embeds = self.domian_lang_fc(lang_embeds)
+
+        #new additional line: we take this contrastive loss embed layer for making the final shared classification rather than taking the base projection layer as in the orig paper
+        #This is symmetric to the visual(car) pipeline
+        lang_embeds = self.lang_car_fc(lang_embeds) #contrastive loss lang embeds
+
+        lang_embeds = F.normalize(lang_embeds, p = 2, dim = -1)
+        return lang_embeds
+
+    def encode_images(self,crops,motion=None):
+        visual_embeds = self.domian_vis_fc(self.vis_backbone(crops)) # embed_dim x 1 x 1
+        visual_embeds = visual_embeds.view(visual_embeds.size(0), -1)
+
+        visual_car_embeds = self.vis_car_fc(visual_embeds) #contrastive loss car embeds
+        visual_embeds = F.normalize(visual_car_embeds, p = 2, dim = -1)
+        return visual_embeds
+
+    def forward(self, nl_input_ids,nl_attention_mask,crops,motion):
+
+        outputs = self.bert_model(nl_input_ids,attention_mask=nl_attention_mask)
+        lang_embeds = torch.mean(outputs.last_hidden_state, dim=1)
+        lang_embeds = self.domian_lang_fc(lang_embeds) #base lang proj
+        
+        visual_embeds = self.domian_vis_fc(self.vis_backbone(crops))
+        visual_embeds = visual_embeds.view(visual_embeds.size(0), -1)
+        
+        visual_car_embeds = self.vis_car_fc(visual_embeds) #contrastive loss car embeds
+        
+        lang_car_embeds = self.lang_car_fc(lang_embeds) #contrastive loss lang embeds
+
+        cls_logits_results = []
+
+        if self.model_cfg.car_idloss:
+            cls_logits = self.id_cls(visual_embeds)
+            cls_logits_results.append(cls_logits)
+        
+        #Following is new: classification of tracks based on lang sentences
+        if self.model_cfg.lang_idloss:
+            cls_logits = self.id_cls2(visual_embeds)
+            cls_logits_results.append(cls_logits)
+        
+        if self.model_cfg.share_idloss:  
+            merge_cls_t = self.id_cls3(lang_car_embeds) #use the contrastive loss embeds instead of the base proj layer embeds for lang
+            merge_cls_v = self.id_cls3(visual_car_embeds)
+            cls_logits_results.append(merge_cls_t)
+            cls_logits_results.append(merge_cls_v)
+
+
+        visual_car_embeds,lang_car_embeds = map(lambda t: F.normalize(t, p = 2, dim = -1), (visual_car_embeds,lang_car_embeds))
+
+        return [(visual_car_embeds,lang_car_embeds)],self.logit_scale,cls_logits_results
+
+

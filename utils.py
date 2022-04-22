@@ -2,9 +2,21 @@ import io
 import logging
 import os
 import  torch
-import colorlog
+# import colorlog
+from collections import OrderedDict
 
 
+def load_new_model_from_checkpoint(model, cp_path):
+    checkpoint = torch.load(cp_path,map_location=torch.device('cpu'))
+    new_state_dict = OrderedDict()
+    for k, v in checkpoint['state_dict'].items():
+        name = k[7:] # remove `module.`
+        if(name[:15] != "vis_backbone_bk" and name[:16] != "domian_vis_fc_bk" and name[:7] != "attpool"  and name[:19] != "domian_vis_fc_merge" and name[:13] != "vis_motion_fc" and name[:14] != "lang_motion_fc"):
+            new_state_dict[name] = v
+        
+    # print(new_state_dict.keys())
+    model.load_state_dict(new_state_dict)
+    return model
 
 class TqdmToLogger(io.StringIO):
     logger = None
@@ -40,8 +52,8 @@ def get_logger(logger_name='default', debug=False, save_to_dir=None):
             '%(message)s'
         )
     bold_seq = '\033[1m'
-    colorlog_format = f'{bold_seq} %(log_color)s {log_format}'
-    colorlog.basicConfig(format=colorlog_format, datefmt='%y-%m-%d %H:%M:%S')
+    # colorlog_format = f'{bold_seq} %(log_color)s {log_format}'
+    # colorlog.basicConfig(format=colorlog_format, datefmt='%y-%m-%d %H:%M:%S')
     logger = logging.getLogger(logger_name)
 
     if debug:
