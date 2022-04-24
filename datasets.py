@@ -23,31 +23,61 @@ class CityFlowNLDataset(Dataset):
         self.random = Random
         with open(json_path) as f:
             tracks = json.load(f)
-        self.list_of_uuids = list(tracks.keys())
-        self.list_of_tracks = list(tracks.values())
+        
+        self.uuid_to_index = {}
+        self.index_to_uuid = {}
+        self.list_of_tracks = []
+
+        for i, (k,v) in enumerate(tracks.items()):
+            self.uuid_to_index[k] = i
+            self.index_to_uuid[i] = k
+            self.list_of_tracks.append(v)
+
+        self.targets_ohe, self.target_ind = self.process_track_targets(len(self.list_of_tracks))
+        
         self.transform = transform
         self.bk_dic = {}
         self._logger = get_logger()
         
-        self.all_indexs = list(range(len(self.list_of_uuids)))
-        self.flip_tag = [False]*len(self.list_of_uuids)
+        self.all_indexs = list(range(len(self.list_of_tracks)))
+        self.flip_tag = [False]*len(self.list_of_tracks)
         flip_aug = False
-        if flip_aug:
-            for i in range(len(self.list_of_uuids)):
-                text = self.list_of_tracks[i]["nl"]
-                for j in range(len(text)):
-                    nl = text[j]
-                    if "turn" in nl:
-                        if "left" in nl:
-                            self.all_indexs.append(i)
-                            self.flip_tag.append(True)
-                            break
-                        elif "right" in nl:
-                            self.all_indexs.append(i)
-                            self.flip_tag.append(True)
-                            break
+        # print(len(self.all_indexs))
+        # if flip_aug:
+        #     for i in range(len(self.list_of_tracks)):
+        #         text = self.list_of_tracks[i]["nl"]
+        #         for j in range(len(text)):
+        #             nl = text[j]
+        #             if "turn" in nl:
+        #                 if "left" in nl:
+        #                     self.all_indexs.append(i)
+        #                     self.flip_tag.append(True)
+        #                     break
+        #                 elif "right" in nl:
+        #                     self.all_indexs.append(i)
+        #                     self.flip_tag.append(True)
+        #                     break
         print(len(self.all_indexs))
         print("data load")
+
+    def process_track_targets(self, n):
+        target_lst = []
+        target_ind = []
+        for track in self.list_of_tracks:
+            target_oh = torch.zeros(n)
+            target_id = []
+            targets = track["targets"]
+            
+            for ut in targets:
+                ind = self.uuid_to_index[ut]
+                target_oh[ind] = 1
+                target_id.append(ind)
+            
+            target_lst.append(target_oh)
+            target_ind.append(target_id)
+
+        return target_lst, target_ind
+
 
     def __len__(self):
         return len(self.all_indexs)
@@ -55,17 +85,20 @@ class CityFlowNLDataset(Dataset):
     def __getitem__(self, index):
    
         tmp_index = self.all_indexs[index]
-        flag = self.flip_tag[index]
-        track = self.list_of_tracks[tmp_index]
+        # flag = self.flip_tag[index]
+        flag=False
+        track = self.list_of_tracks[index]
+        target = self.targets_ohe[index]
+        target_ids = self.targets_ind[index]
         if self.random:
-            nl_idx = int(random.uniform(0, 3))
+            nl_idx = int(random.uniform(0, len(track["subjects"])))
             frame_idx = int(random.uniform(0, len(track["frames"])))
         else:
             nl_idx = 2
             frame_idx = 0
-        text = track["nl"][nl_idx]
-        if flag:
-            text = text.replace("left","888888").replace("right","left").replace("888888","right")
+        text = track["subjects"][nl_idx]
+        # if flag:
+        #     text = text.replace("left","888888").replace("right","left").replace("888888","right")
         
         frame_path = os.path.join(self.data_cfg.CITYFLOW_PATH, track["frames"][frame_idx])
         
@@ -80,26 +113,24 @@ class CityFlowNLDataset(Dataset):
         crop = frame.crop(box)
         if self.transform is not None:
             crop = self.transform(crop)
+
         if self.data_cfg.USE_MOTION:
-            if self.list_of_uuids[tmp_index] in self.bk_dic:
-                bk = self.bk_dic[self.list_of_uuids[tmp_index]]
+            if self.index_to_uuid[tmp_index] in self.bk_dic:
+                bk = self.bk_dic[self.index_to_uuid[tmp_index]]
             else:
-                bk = default_loader(self.data_cfg.MOTION_PATH+"/%s.jpg"%self.list_of_uuids[tmp_index])
-                self.bk_dic[self.list_of_uuids[tmp_index]] = bk
+                bk = default_loader(self.data_cfg.MOTION_PATH+"/%s.jpg"%self.index_to_uuid[tmp_index])
+                self.bk_dic[self.index_to_uuid[tmp_index]] = bk
                 bk = self.transform(bk)
                 
             if flag:
                 crop = torch.flip(crop,[1])
                 bk = torch.flip(bk,[1])
-            return crop,text,bk,tmp_index
+            return crop,text,bk,torch.LongTensor(target),target_ids,tmp_index
         if flag:
             crop = torch.flip(crop,[1])
-        return crop,text,tmp_index
+        return crop,text,torch.LongTensor(target),target_ids,tmp_index
 
-
-
-
-
+#Need to modify for new usecase
 class CityFlowNLInferenceDataset(Dataset):
     def __init__(self, data_cfg,transform = None):
         """Dataset for evaluation. Loading tracks instead of frames."""

@@ -235,6 +235,7 @@ class SiameseNewStage1(torch.nn.Module):
 
         self.domian_lang_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, embed_dim)) # Lang base proj layer
 
+        
         if self.model_cfg.car_idloss:
             self.id_cls = nn.Sequential(nn.Linear(embed_dim, embed_dim),nn.BatchNorm1d(embed_dim), nn.ReLU(),nn.Linear(embed_dim, self.model_cfg.NUM_CLASS)) #car classification head proj layer
 

@@ -24,6 +24,7 @@ def nlp_aug_basline(train):
 
 def nlp_aug_modified(train):
 	track_ids = list(train.keys())
+	desc_dict = {}
 	for id_ in track_ids:
 		print("Processing id: "+id_)
 		train[id_]["subjects"] = []
@@ -33,12 +34,31 @@ def nlp_aug_modified(train):
 			for chunk in doc.noun_chunks:
 				nb = chunk.text
 				break
-			
 			temp.add(nb.strip().lower())
+
+		# for text in train[id_]["nl_other_views"]:
+		# 	doc = nlp(text)
+		# 	for chunk in doc.noun_chunks:
+		# 		nb = chunk.text
+		# 		break
+		# 	temp.add(nb.strip().lower())
 		
 		for s in temp:
 			train[id_]["subjects"].append(s)
+			if(s not in desc_dict.keys()):
+				desc_dict[s] = set()
+			desc_dict[s].add(id_)
 
+	for id_ in track_ids:
+		temp = set()
+		for sub in train[id_]["subjects"]:
+			temp.update(desc_dict[sub])
+		
+		train[id_]["targets"] = []
+		for uid in temp:
+			train[id_]["targets"].append(uid)
+
+			
 	with open(sys.argv[1].split('.')[-2]+"_nlpaug_modified.json", "w") as f:
 		json.dump(train, f,indent=4)
 

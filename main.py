@@ -6,6 +6,7 @@ from datetime import datetime
 import argparse
 from xmlrpc.client import boolean
 import torch
+from torch import nn
 import torch.distributed as dist
 import torch.multiprocessing
 import torch.multiprocessing as mp
@@ -78,9 +79,9 @@ def evaluate(model,valloader,epoch,cfg,index=0):
     with torch.no_grad():
         for batch_idx,batch in enumerate(valloader):
             if cfg.DATA.USE_MOTION:
-                image,text,bk,id_car = batch
+                image,text,bk,id_car, target_ind, ind = batch
             else:
-                image,text,id_car = batch
+                image,text,id_car, target_ind, ind = batch
             tokens = tokenizer.batch_encode_plus(text, padding='longest',
                                                    return_tensors='pt')
             data_time.update(time.time() - end)
@@ -94,9 +95,16 @@ def evaluate(model,valloader,epoch,cfg,index=0):
             # for visual_embeds,lang_embeds in pairs:
             visual_embeds,lang_embeds = pairs[index]
             sim_i_2_t = torch.matmul(torch.mul(logit_scale, visual_embeds), torch.t(lang_embeds))
+            batch_sim = torch.zeros(sim_i_2_t.shape)
+            batch_size = len(ind)
+            for t_i in range(batch_size):
+                for t_j in range(batch_size):
+                    if(ind[t_j] in target_ind[t_i]):
+                        batch_sim[t_i][t_j] = 1
+
             sim_t_2_i = sim_i_2_t.t()
-            loss_t_2_i = F.cross_entropy(sim_t_2_i, torch.arange(image.size(0)).cuda())
-            loss_i_2_t = F.cross_entropy(sim_i_2_t, torch.arange(image.size(0)).cuda())
+            loss_t_2_i = nn.BCEWithLogitsLoss(sim_t_2_i, batch_sim.cuda())
+            loss_i_2_t = nn.BCEWithLogitsLoss(sim_i_2_t, batch_sim.cuda())
             loss += (loss_t_2_i+loss_i_2_t)/2
 
             
@@ -203,11 +211,10 @@ for epoch in range(cfg.TRAIN.EPOCH):
     for tmp in range(cfg.TRAIN.ONE_EPOCH_REPEAT):
         for batch_idx,batch in enumerate(trainloader):
             if cfg.DATA.USE_MOTION:
-                image,text,bk,id_car = batch
+                image, text, bk, id_car, target_ind, ind = batch
             else:
-                image,text,id_car = batch
-            tokens = tokenizer.batch_encode_plus(text, padding='longest',
-                                                   return_tensors='pt')
+                image, text, id_car, target_ind, ind = batch
+            tokens = tokenizer.batch_encode_plus(text, padding='longest',return_tensors='pt')
             data_time.update(time.time() - end)
             global_step+=1
             optimizer.zero_grad()
@@ -218,14 +225,25 @@ for epoch in range(cfg.TRAIN.EPOCH):
             logit_scale = logit_scale.mean().exp()
             loss = 0 
  
+            batch_size = len(ind)
+            batch_sim = torch.zeros((batch_size, batch_size))
+            for t_i in range(batch_size):
+                for t_j in range(batch_size):
+                    if(ind[t_j] in target_ind[t_i]):
+                        batch_sim[t_i][t_j] = 1
+
             for visual_embeds,lang_embeds in pairs:
                 sim_i_2_t = torch.matmul(torch.mul(logit_scale, visual_embeds), torch.t(lang_embeds))
                 sim_t_2_i = sim_i_2_t.t()
-                loss_t_2_i = F.cross_entropy(sim_t_2_i, torch.arange(image.size(0)).cuda())
-                loss_i_2_t = F.cross_entropy(sim_i_2_t, torch.arange(image.size(0)).cuda())
+                loss_t_2_i = nn.BCEWithLogitsLoss(sim_t_2_i, batch_sim.cuda())
+                loss_i_2_t = nn.BCEWithLogitsLoss(sim_i_2_t, batch_sim.cuda())
                 loss += (loss_t_2_i+loss_i_2_t)/2
+
             for cls_logit in cls_logits:
-                loss+= 0.5*F.cross_entropy(cls_logit, id_car.long().cuda())
+                #using bcewithlogitsloss (Sigmoid + BCE loss) instead of (Softmax + ) CrossEntropy for multiclass classification
+                print("*****Logits shape: ",cls_logit.shape)
+                print("Target shape: ",id_car.shape)
+                loss+= 0.5*nn.BCEWithLogitsLoss(cls_logit, id_car.cuda())
 
             acc1, acc5 = accuracy(sim_t_2_i, torch.arange(image.size(0)).cuda(), topk=(1, 5))
             losses.update(loss.item(), image.size(0))
