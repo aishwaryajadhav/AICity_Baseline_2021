@@ -26,14 +26,14 @@ def main(args):
             path_image = os.path.join(path_images, '%06d.jpg' % count)
             cv2.imwrite(path_image, image)
             success, image = vidcap.read()
-            print('Data path: %s; Frame #%06d' % (path_data, count))
+            print('Data path: %s: Frame #%06d' % (path_data, count))
             count += 1
 
 
 if __name__ == '__main__':
     print("Loading parameters...")
     parser = argparse.ArgumentParser(description='Extract video frames')
-    parser.add_argument('--data-root', dest='data_root', default='train/S01',
+    parser.add_argument('--data_root', dest='data_root', default='..\\train\\S01',
                         help='dataset root path')
 
     args = parser.parse_args()

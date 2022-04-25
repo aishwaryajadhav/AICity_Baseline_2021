@@ -14,27 +14,34 @@ def main(args):
 
     for seq_name in seq_list:
         path_data = os.path.join(args.data_root, seq_name)
-        path_vdo = os.path.join(path_data, 'vdo.avi')
-        path_images = os.path.join(path_data, 'img1')
-        check_and_create(path_images)
+        sl = os.listdir(path_data)
+        for s in sl:
+            path_vdo = os.path.join(path_data, s, 'vdo.avi')
+            path_images = os.path.join(path_data, s, 'img1')
+            print('********************************************')
+            print(path_vdo)
+            print(path_images)
+            print('********************************************')
+            check_and_create(path_images)
 
-        vidcap = cv2.VideoCapture(path_vdo)
-        success, image = vidcap.read()
-
-        count = 1
-        while success:
-            path_image = os.path.join(path_images, '%06d.jpg' % count)
-            cv2.imwrite(path_image, image)
+            vidcap = cv2.VideoCapture(path_vdo)
             success, image = vidcap.read()
-            print('Data path: %s; Frame #%06d' % (path_data, count))
-            count += 1
+
+            count = 1
+            while success:
+                path_image = os.path.join(path_images, '%06d.jpg' % count)
+                cv2.imwrite(path_image, image)
+                success, image = vidcap.read()
+                print('Data path: %s: Frame #%06d' % (path_vdo, count))
+                count += 1
 
 
 if __name__ == '__main__':
     print("Loading parameters...")
     parser = argparse.ArgumentParser(description='Extract video frames')
-    parser.add_argument('--data-root', dest='data_root', default='train/S01',
+    parser.add_argument('--data_root', dest='data_root', default='..\\train\\S01',
                         help='dataset root path')
+    # parser.add_argument('--store_path', dest='store_path', default='..\\train\\S01',help='dataset store path')
 
     args = parser.parse_args()
 
