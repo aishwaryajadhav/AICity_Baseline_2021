@@ -5,19 +5,25 @@ from tqdm import tqdm
 import os
 import multiprocessing
 from functools import partial
-imgpath = "data/AIC21_Track5_NL_Retrieval/"
-with open("data/test-tracks.json") as f:
-    tracks_test = json.load(f)
-with open("data/test-tracks.json") as f:
+imgpath = "~/data/"
+
+#do not generate for test as of now
+# with open("~/data/test-tracks.json") as f:
+#     tracks_test = json.load(f)
+with open("~/data/train_tracks.json") as f:
     tracks_train = json.load(f)
+
+
 all_tracks = tracks_train
-for track in tracks_test:
-    all_tracks[track] = tracks_test[track]
+#generate motion and bk maps for test vids too
+#dont do this as of now
+# for track in tracks_test:
+#     all_tracks[track] = tracks_test[track]
 n_worker = 12
 import glob
-save_bk_dir = "data/bk_map"
+save_bk_dir = "~/data/bk_map"
 os.makedirs(save_bk_dir,exist_ok = True)
-save_mo_dir = "data/motion_map"
+save_mo_dir = "~/data/motion_map"
 os.makedirs(save_mo_dir,exist_ok = True)
 def get_bk_map(info):
     path,save_name = info
@@ -55,8 +61,9 @@ def get_motion_map(info):
 
 
 
-root = "data/AIC21_Track5_NL_Retrieval/"
-paths = ["train/S01","train/S03","train/S04","validation/S02","validation/S05"]
+root = "~/data/"
+# paths = ["train/S01","train/S03","train/S04","validation/S02","validation/S05"]
+paths = ["validation/S02","validation/S05"]
 files =[]
 for path in paths:
     seq_list = os.listdir(root+path)
