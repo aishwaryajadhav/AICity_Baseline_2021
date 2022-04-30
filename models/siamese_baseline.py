@@ -228,12 +228,13 @@ class SiameseNewStage1(torch.nn.Module):
             p.requires_grad = False
         self.logit_scale = nn.Parameter(torch.ones(()), requires_grad=True)
        
+        self.domian_lang_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, embed_dim)) # Lang base proj layer
 
         self.vis_car_fc = nn.Sequential(nn.BatchNorm1d(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim)) #proj layer of car features (for contrastive loss)
 
         self.lang_car_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim)) #proj layer for language and car contrastive loss
 
-        self.domian_lang_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, embed_dim)) # Lang base proj layer
+        
 
         
         if self.model_cfg.car_idloss:
@@ -258,7 +259,7 @@ class SiameseNewStage1(torch.nn.Module):
         lang_embeds = F.normalize(lang_embeds, p = 2, dim = -1)
         return lang_embeds
 
-    def encode_images(self,crops,motion=None):
+    def encode_images(self,crops):
         visual_embeds = self.domian_vis_fc(self.vis_backbone(crops)) # embed_dim x 1 x 1
         visual_embeds = visual_embeds.view(visual_embeds.size(0), -1)
 
@@ -266,7 +267,7 @@ class SiameseNewStage1(torch.nn.Module):
         visual_embeds = F.normalize(visual_car_embeds, p = 2, dim = -1)
         return visual_embeds
 
-    def forward(self, nl_input_ids,nl_attention_mask,crops,motion=None):
+    def forward(self, nl_input_ids,nl_attention_mask,crops):
 
         outputs = self.bert_model(nl_input_ids,attention_mask=nl_attention_mask)
         lang_embeds = torch.mean(outputs.last_hidden_state, dim=1)
@@ -301,4 +302,81 @@ class SiameseNewStage1(torch.nn.Module):
 
         return [(visual_car_embeds,lang_car_embeds)],self.logit_scale,cls_logits_results
 
+
+
+class SiameseNewStage2(torch.nn.Module):
+    def __init__(self, model_cfg):
+        super().__init__()
+        self.model_cfg = model_cfg
+        embed_dim = self.model_cfg.EMBED_DIM
+        if self.model_cfg.IMG_ENCODER in  supported_img_encoders:
+            if self.model_cfg.IMG_ENCODER == "se_resnext50_32x4d":
+                self.vis_backbone = se_resnext50_32x4d()
+                self.vis_backbone_bk = se_resnext50_32x4d()
+                self.img_in_dim = 2048
+                self.domian_vis_fc_bk = nn.Conv2d(self.img_in_dim, embed_dim,kernel_size=1)
+            else:
+                self.vis_backbone = EfficientNet.from_pretrained(self.model_cfg.IMG_ENCODER)
+                self.vis_backbone_bk = EfficientNet.from_pretrained(self.model_cfg.IMG_ENCODER)
+                self.img_in_dim = self.vis_backbone.out_channels
+                self.domian_vis_fc_bk = nn.Linear(self.img_in_dim, embed_dim)
+
+        else:
+            assert self.model_cfg.IMG_ENCODER in supported_img_encoders, "unsupported img encoder"
+
+        self.bert_model = RobertaModel.from_pretrained(model_cfg.BERT_NAME)
+        for p in  self.bert_model.parameters():
+            p.requires_grad = False
+        self.logit_scale = nn.Parameter(torch.ones(()), requires_grad=True)
+        
+        self.domian_lang_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, embed_dim)) # Lang base proj layer
+
+        self.vis_motion_fc = nn.Sequential(nn.BatchNorm1d(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim)) #proj layer of motion features
+
+        self.lang_motion_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim)) #proj layer of lang and motion features
+
+    
+    def encode_text(self,nl_input_ids,nl_attention_mask):
+        outputs = self.bert_model(nl_input_ids,
+                                  attention_mask=nl_attention_mask)
+        lang_embeds = torch.mean(outputs.last_hidden_state, dim=1)
+        lang_embeds = self.domian_lang_fc(lang_embeds)
+
+        #new additional line: we take this contrastive loss embed layer for making the final shared classification rather than taking the base projection layer as in the orig paper
+        #This is symmetric to the visual(car) pipeline
+        lang_embeds = self.lang_motion_fc(lang_embeds) 
+
+        lang_embeds = F.normalize(lang_embeds, p = 2, dim = -1)
+        return lang_embeds
+
+    def encode_images(self,motion):
+        
+        motion_embeds = self.domian_vis_fc_bk(self.vis_backbone_bk(torch.squeeze(motion)))
+        motion_embeds = torch.squeeze(motion_embeds)
+
+        visual_mo_embeds = self.vis_motion_fc(motion_embeds)
+        
+        visual_embeds = F.normalize(visual_mo_embeds, p = 2, dim = -1)
+        return visual_embeds
+
+    def forward(self, nl_input_ids,nl_attention_mask,motion):
+
+        outputs = self.bert_model(nl_input_ids,attention_mask=nl_attention_mask)
+        lang_embeds = torch.mean(outputs.last_hidden_state, dim=1)
+        lang_embeds = self.domian_lang_fc(lang_embeds)
+
+        print("Motion raw shape: ", motion.shape)
+        motion_embeds = self.domian_vis_fc_bk(self.vis_backbone_bk(torch.squeeze(motion)))
+        print(motion_embeds.shape)
+        motion_embeds = torch.squeeze(motion_embeds)       #changed to squeeze here
+        print(motion_embeds.shape)
+
+        visual_mo_embeds = self.vis_motion_fc(motion_embeds)
+        print(visual_mo_embeds.shape)
+
+        lang_mo_embeds = self.lang_motion_fc(lang_embeds) 
+
+        visual_mo_embeds,lang_mo_embeds = map(lambda t: F.normalize(t, p = 2, dim = -1), (visual_mo_embeds,lang_mo_embeds))
+
+        return [(visual_mo_embeds,lang_mo_embeds)],self.logit_scale
 

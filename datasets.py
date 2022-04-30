@@ -187,3 +187,86 @@ class CityFlowNLInferenceDataset(Dataset):
             return crop,bk,track["track_id"],track["frames_id"]
         return crop,track["track_id"],track["frames_id"]
 
+####################################Stage 2 Dataset########################################################
+
+
+class CityFlowNLDataset_Stage2(Dataset):
+    def __init__(self, data_cfg,json_path,transform = None,Random= True):
+        """
+        Dataset for training.
+        :param data_cfg: CfgNode for CityFlow NL.
+        """
+        self.data_cfg = data_cfg.clone()
+        self.crop_area = data_cfg.CROP_AREA
+        self.random = Random
+        with open(json_path) as f:
+            tracks = json.load(f)
+
+        self.uuid_to_index = {}
+        self.index_to_uuid = {}
+        self.list_of_tracks = []
+        # self.targets = []
+
+        for i, (k,v) in enumerate(tracks.items()):
+            self.uuid_to_index[k] = i
+            self.index_to_uuid[i] = k
+            self.list_of_tracks.append(v)
+            # t = v["targets"].index(k)
+            # self.targets.append(t)
+
+        self.transform = transform
+        # self.bk_dic = {}
+        self._logger = get_logger()
+        
+        self.all_indexs = list(self.index_to_uuid.keys())
+        self.flip_tag = [False]*len(self.list_of_tracks)
+        flip_aug = False
+        # if flip_aug:
+        #     for i in range(len(self.list_of_uuids)):
+        #         text = self.list_of_tracks[i]["nl"]
+        #         for j in range(len(text)):
+        #             nl = text[j]
+        #             if "turn" in nl:
+        #                 if "left" in nl:
+        #                     self.all_indexs.append(i)
+        #                     self.flip_tag.append(True)
+        #                     break
+        #                 elif "right" in nl:
+        #                     self.all_indexs.append(i)
+        #                     self.flip_tag.append(True)
+        #                     break
+        print(len(self.all_indexs))
+        print("data load")
+
+    def __len__(self):
+        return len(self.all_indexs)
+
+    def __getitem__(self, index):
+   
+        tmp_index = self.all_indexs[index]
+        track = self.list_of_tracks[tmp_index]
+        targets = track["targets"]
+
+        if self.random:
+            nl_idx = int(random.uniform(0, len(track["aug_nl"])-1))
+            random.shuffle(targets)
+        else:
+            nl_idx = 2
+
+        #using shuffled (or not) targets and extract index of correct track
+        tind = targets.index(self.index_to_uuid[tmp_index])    
+        text = track["aug_nl"][nl_idx]
+    
+        # if self.index_to_uuid[tmp_index] in self.bk_dic:
+        #     bk_list = self.bk_dic[self.index_to_uuid[tmp_index]]
+        # else:
+        bk_list = []
+        for tuid in targets:
+            bk = default_loader(self.data_cfg.MOTION_PATH+"/%s.jpg"%tuid)
+            bk = self.transform(bk)
+            bk_list.append(bk)
+
+        bk_list = torch.FloatTensor(bk_list)   
+
+        return bk_list,text,tind,tmp_index
+
