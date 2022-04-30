@@ -27,6 +27,7 @@ def main(args):
             vidcap = cv2.VideoCapture(path_vdo)
             success, image = vidcap.read()
 
+            
             count = 1
             while success:
                 path_image = os.path.join(path_images, '%06d.jpg' % count)
