@@ -29,6 +29,18 @@ def load_new_model_from_checkpoint(model, cp_path, num_classes, embed_dim):
     model.load_state_dict(new_state_dict)
     return model
 
+def load_new_model_from_checkpoint_stage2(model, cp_path, num_classes, embed_dim):
+    checkpoint = torch.load(cp_path)
+    new_state_dict = OrderedDict()
+    for k, v in checkpoint['state_dict'].items():
+        name = k[7:] # remove `module.`
+        new_state_dict[name] = v
+        
+    # print(new_state_dict.keys())
+    model.load_state_dict(new_state_dict)
+    return model   
+
+
 class TqdmToLogger(io.StringIO):
     logger = None
     level = None
