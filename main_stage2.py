@@ -227,10 +227,11 @@ for epoch in range(cfg.TRAIN.EPOCH):
     end = time.time()
     for tmp in range(cfg.TRAIN.ONE_EPOCH_REPEAT):
         for batch_idx,batch in enumerate(trainloader):
-            if cfg.DATA.USE_MOTION:
-                image, text, bk, id_car, target_ind, ind = batch
-            else:
-                image, text, id_car, target_ind, ind = batch
+            # if cfg.DATA.USE_MOTION:
+            #     image, text, bk, id_car, target_ind, ind = batch
+            bk_list,text,tind,tmp_index = batch
+            # else:
+            #     image, text, id_car, target_ind, ind = batch
             tokens = tokenizer.batch_encode_plus(text, padding='longest',return_tensors='pt')
             data_time.update(time.time() - end)
             global_step+=1
