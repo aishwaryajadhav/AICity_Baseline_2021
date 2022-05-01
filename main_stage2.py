@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 from config import get_default_config
 from models.siamese_baseline import SiameseBaselineModelv1,SiameseLocalandMotionModelBIG,SiameseNewStage1,SiameseNewStage2
-from utils import TqdmToLogger, get_logger,AverageMeter,accuracy,ProgressMeter,load_new_model_from_checkpoint
+from utils import TqdmToLogger, get_logger,AverageMeter,accuracy,ProgressMeter,load_new_model_from_checkpoint_stage2
 from datasets import CityFlowNLDataset
 from datasets import CityFlowNLDataset_Stage2
 from torch.optim.lr_scheduler import _LRScheduler
@@ -185,7 +185,7 @@ else:
     assert cfg.MODEL.NAME in ["base","dual-stream","new"] , "unsupported model"
 if args.load_existing:
     if(cfg.MODEL.NAME == "new"):
-        model = load_new_model_from_checkpoint(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM)
+        model = load_new_model_from_checkpoint_stage2(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM)
     else:
         checkpoint = torch.load(cfg.EVAL.RESTORE_FROM)
         new_state_dict = OrderedDict()

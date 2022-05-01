@@ -28,13 +28,21 @@ def nlp_aug_modified(train):
 	for id_ in track_ids:
 		print("Processing id: "+id_)
 		train[id_]["subjects"] = []
+		train[id_]["aug_nl"] = []
+
 		temp = set()
 		for text in train[id_]["nl"]:
 			doc = nlp(text)
 			for chunk in doc.noun_chunks:
 				nb = chunk.text
 				break
-			temp.add(nb.strip().lower())
+
+			subj = nb.strip().lower()
+			temp.add(subj)
+
+			t1 = text.strip().lower()
+			t1 = t1.replace(subj, "vehicle")
+			train[id_]["aug_nl"].append(t1)
 
 		# for text in train[id_]["nl_other_views"]:
 		# 	doc = nlp(text)

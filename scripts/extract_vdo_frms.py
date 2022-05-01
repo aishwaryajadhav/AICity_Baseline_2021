@@ -6,6 +6,9 @@ import argparse
 def check_and_create(folder_path):
     if not os.path.isdir(folder_path):
         os.makedirs(folder_path)
+        return True
+    else:
+        return False
     return folder_path
 
 
@@ -14,27 +17,23 @@ def main(args):
 
     for seq_name in seq_list:
         path_data = os.path.join(args.data_root, seq_name)
-        sl = os.listdir(path_data)
-        for s in sl:
-            path_vdo = os.path.join(path_data, s, 'vdo.avi')
-            path_images = os.path.join(path_data, s, 'img1')
-            print('********************************************')
-            print(path_vdo)
-            print(path_images)
-            print('********************************************')
-            check_and_create(path_images)
+        path_vdo = os.path.join(path_data, 'vdo.avi')
+        path_images = os.path.join(path_data, 'img1')
+        if(not check_and_create(path_images)):
+            print("Skipping {} as path already exists".format(path_images))     
+            continue
 
-            vidcap = cv2.VideoCapture(path_vdo)
+        print(path_images)
+        vidcap = cv2.VideoCapture(path_vdo)
+        success, image = vidcap.read()
+
+        count = 1
+        while success:
+            path_image = os.path.join(path_images, '%06d.jpg' % count)
+            cv2.imwrite(path_image, image)
             success, image = vidcap.read()
-
-            
-            count = 1
-            while success:
-                path_image = os.path.join(path_images, '%06d.jpg' % count)
-                cv2.imwrite(path_image, image)
-                success, image = vidcap.read()
-                print('Data path: %s: Frame #%06d' % (path_vdo, count))
-                count += 1
+            print('Data path: %s: Frame #%06d' % (path_data, count))
+            count += 1
 
 
 if __name__ == '__main__':
@@ -42,7 +41,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract video frames')
     parser.add_argument('--data_root', dest='data_root', default='..\\train\\S01',
                         help='dataset root path')
-    # parser.add_argument('--store_path', dest='store_path', default='..\\train\\S01',help='dataset store path')
 
     args = parser.parse_args()
 
