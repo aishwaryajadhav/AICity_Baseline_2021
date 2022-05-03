@@ -5,7 +5,7 @@ from torchvision.models import resnet50,resnet34
 from transformers import BertTokenizer, BertModel
 from transformers import RobertaTokenizer, RobertaModel
 from models.senet import se_resnext50_32x4d
-from .efficientnet import EfficientNet
+from models.efficientnet import EfficientNet
 
 
 supported_img_encoders = ["se_resnext50_32x4d","efficientnet-b2","efficientnet-b3"]
@@ -311,14 +311,14 @@ class SiameseNewStage2(torch.nn.Module):
         embed_dim = self.model_cfg.EMBED_DIM
         if self.model_cfg.IMG_ENCODER in  supported_img_encoders:
             if self.model_cfg.IMG_ENCODER == "se_resnext50_32x4d":
-                self.vis_backbone = se_resnext50_32x4d()
+                # self.vis_backbone = se_resnext50_32x4d()
                 self.vis_backbone_bk = se_resnext50_32x4d()
                 self.img_in_dim = 2048
                 self.domian_vis_fc_bk = nn.Conv2d(self.img_in_dim, embed_dim,kernel_size=1)
             else:
-                self.vis_backbone = EfficientNet.from_pretrained(self.model_cfg.IMG_ENCODER)
+                # self.vis_backbone = EfficientNet.from_pretrained(self.model_cfg.IMG_ENCODER)
                 self.vis_backbone_bk = EfficientNet.from_pretrained(self.model_cfg.IMG_ENCODER)
-                self.img_in_dim = self.vis_backbone.out_channels
+                self.img_in_dim = self.vis_backbone_bk.out_channels
                 self.domian_vis_fc_bk = nn.Linear(self.img_in_dim, embed_dim)
 
         else:
@@ -331,9 +331,9 @@ class SiameseNewStage2(torch.nn.Module):
         
         self.domian_lang_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.Linear(embed_dim, embed_dim), nn.ReLU(), nn.Linear(embed_dim, embed_dim)) # Lang base proj layer
 
-        self.vis_motion_fc = nn.Sequential(nn.BatchNorm1d(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim)) #proj layer of motion features
+        self.vis_motion_fc = nn.Sequential(nn.BatchNorm1d(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim // 2)) #proj layer of motion features
 
-        self.lang_motion_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim)) #proj layer of lang and motion features
+        self.lang_motion_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim // 2)) #proj layer of lang and motion features
 
     
     def encode_text(self,nl_input_ids,nl_attention_mask):
@@ -351,8 +351,8 @@ class SiameseNewStage2(torch.nn.Module):
 
     def encode_images(self,motion):
         
-        motion_embeds = self.domian_vis_fc_bk(self.vis_backbone_bk(torch.squeeze(motion)))
-        motion_embeds = torch.squeeze(motion_embeds)
+        motion_embeds = self.domian_vis_fc_bk(self.vis_backbone_bk(torch.squeeze(motion,0)))
+        motion_embeds = motion_embeds.view(motion_embeds.size(0), -1)    
 
         visual_mo_embeds = self.vis_motion_fc(motion_embeds)
         
@@ -365,17 +365,14 @@ class SiameseNewStage2(torch.nn.Module):
         lang_embeds = torch.mean(outputs.last_hidden_state, dim=1)
         lang_embeds = self.domian_lang_fc(lang_embeds)
 
-        print("Motion raw shape: ", motion.shape)
-        motion_embeds = self.domian_vis_fc_bk(self.vis_backbone_bk(torch.squeeze(motion)))
-        print(motion_embeds.shape)
-        motion_embeds = torch.squeeze(motion_embeds)       #changed to squeeze here
-        print(motion_embeds.shape)
+        motion_embeds = self.domian_vis_fc_bk(self.vis_backbone_bk(torch.squeeze(motion,0)))
+        motion_embeds = motion_embeds.view(motion_embeds.size(0), -1) 
+        
 
         visual_mo_embeds = self.vis_motion_fc(motion_embeds)
-        print(visual_mo_embeds.shape)
-
+     
         lang_mo_embeds = self.lang_motion_fc(lang_embeds) 
-
+     
         visual_mo_embeds,lang_mo_embeds = map(lambda t: F.normalize(t, p = 2, dim = -1), (visual_mo_embeds,lang_mo_embeds))
 
         return [(visual_mo_embeds,lang_mo_embeds)],self.logit_scale

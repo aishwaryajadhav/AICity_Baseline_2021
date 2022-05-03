@@ -5,12 +5,12 @@ from tqdm import tqdm
 import os
 import multiprocessing
 from functools import partial
-imgpath = "~/data/"
+imgpath = "/home/azureuser/cloudfiles/code/"
 
 #do not generate for test as of now
 # with open("~/data/test-tracks.json") as f:
 #     tracks_test = json.load(f)
-with open("~/data/train_tracks.json") as f:
+with open("../data/train_tracks.json") as f:
     tracks_train = json.load(f)
 
 
@@ -21,12 +21,18 @@ all_tracks = tracks_train
 #     all_tracks[track] = tracks_test[track]
 n_worker = 12
 import glob
-save_bk_dir = "~/data/bk_map"
+save_bk_dir = "/home/azureuser/cloudfiles/code/data/bk_map"
 os.makedirs(save_bk_dir,exist_ok = True)
-save_mo_dir = "~/data/motion_map"
+save_mo_dir = "/home/azureuser/cloudfiles/code/data/motion_map"
 os.makedirs(save_mo_dir,exist_ok = True)
+
 def get_bk_map(info):
     path,save_name = info
+
+    if(os.path.exists(save_bk_dir+"/%s.jpg"%save_name)):
+        return
+
+    print("processing id: ", path)
     # print(path)
     img = glob.glob(path+"/img1/*")
     img.sort()
@@ -43,6 +49,7 @@ def get_bk_map(info):
 
 def get_motion_map(info):
     track,track_id = info
+    print("processing id: ", track_id)
     for i in range(len(track["frames"])):
         frame_path = track["frames"][i]
         frame_path = os.path.join(imgpath, frame_path)
@@ -54,21 +61,23 @@ def get_motion_map(info):
             example[box[1]:box[1] + box[3], box[0]: box[0] + box[2], :] = frame[box[1]:box[1] + box[3], box[0]: box[0] + box[2], :]
 
     words = track["frames"][0].split('/')
-    avg_img = cv2.imread("data/bk_map/"+words[-4]+'_'+words[-3]+'.jpg').astype(np.int)
+    avg_img = cv2.imread("/home/azureuser/cloudfiles/code/data/bk_map/"+words[-4]+'_'+words[-3]+'.jpg').astype(np.int)
     postions = (example[:,:,0]==0)&(example[:,:,1]==0)&(example[:,:,2]==0)
     example[postions] = avg_img[postions]
     cv2.imwrite(save_mo_dir+"/%s.jpg"%track_id,example)
 
 
 
-root = "~/data/"
+root = "/home/azureuser/cloudfiles/code/"
 # paths = ["train/S01","train/S03","train/S04","validation/S02","validation/S05"]
 paths = ["validation/S02","validation/S05"]
 files =[]
 for path in paths:
     seq_list = os.listdir(root+path)
     for seq in seq_list:
-        files.append((os.path.join(root+path,seq),path[-3:]+'_'+seq))
+        files.append((os.path.join(root,path,seq),path[-3:]+'_'+seq))
+        
+print("************************Generating bk maps****************************")
 with multiprocessing.Pool(n_worker) as pool:
      for imgs in tqdm(pool.imap_unordered(get_bk_map, files)):
          pass
@@ -78,6 +87,7 @@ files = []
 for track_id in all_tracks:
     files.append((all_tracks[track_id],track_id))
 
+print("************************Generating motion maps****************************")
 with multiprocessing.Pool(n_worker) as pool:
     for imgs in tqdm(pool.imap_unordered(get_motion_map, files)):
         pass

@@ -83,6 +83,7 @@ def evaluate(model,valloader,epoch,cfg,index=0):
         predictions = []
         truth = []
         max_mb = -1
+        tot_los = 0
         for batch_idx,batch in enumerate(valloader):
             bk, text, target_index, ind = batch
             
@@ -92,41 +93,51 @@ def evaluate(model,valloader,epoch,cfg,index=0):
 
             tokens = tokenizer.batch_encode_plus(text, padding='longest',
                                                    return_tensors='pt')
-            data_time.update(time.time() - end)
+            # data_time.update(time.time() - end)
             pairs,logit_scale = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),bk.cuda())
             
             logit_scale = logit_scale.mean().exp()
-            loss =0 
+            
 
             # for visual_embeds,lang_embeds in pairs:
             visual_embeds,lang_embeds = pairs[index]
             sim_i_2_t = torch.matmul(torch.mul(logit_scale, visual_embeds), torch.t(lang_embeds))
             sim_i_2_t = sim_i_2_t.t()
-            print("Sim matrix shape: ", sim_i_2_t.shape, "  Should be 1 x motion_shape (ie batch size = 1 x classes)")
-            print("Target index shape: ", target_index.shape)
+            
+            # print("Sim matrix shape: ", sim_i_2_t.shape, "  Should be 1 x motion_shape (ie batch size = 1 x classes)")
+            # print("Target index shape: ", target_index.shape)
             
             # pdb.set_trace()
-            loss = F.cross_entropy(sim_i_2_t, target_index)
+            loss = F.cross_entropy(sim_i_2_t.cuda(), target_index.cuda())
             
+            tot_los += loss.item()
             predictions.append(sim_i_2_t)
             truth.append(target_index)
             
-            losses.update(loss.item(), image.size(0))
-            # pdb.set_trace()
-            batch_time.update(time.time() - end)
-            end = time.time()
+            del bk
+            del sim_i_2_t
+            del loss
+            del text
+            del target_index
+            del visual_embeds
+            del lang_embeds
+            del logit_scale
 
-            progress.display(batch_idx)
         
         for i,pred in enumerate(predictions):
             predictions[i] = F.pad(pred, (0,max_mb - pred.shape[1]), mode='constant', value=0)
 
 
-        acc1, acc5 = accuracy(torch.tensor(predictions), torch.tensor(truth), topk=(1, 5))
-        print("Accuracy top 1: ",acc1[0])
-        print("Accuracy top 5: ",acc5[0])
-        top1_acc.update(acc1[0], image.size(0))
-        top5_acc.update(acc5[0], image.size(0))
+        losses.update(tot_los, 1)
+        batch_time.update(time.time() - end)
+        
+
+        acc1, acc5 = accuracy(torch.concat(predictions, dim = 0).cuda(), torch.concat(truth, dim = 0).cuda(), topk=(1, 5))
+        
+        top1_acc.update(acc1[0], 1)
+        top5_acc.update(acc5[0], 1)
+        progress.display(batch_idx)
+
 
     if top1_acc.avg > best_top1_eval:
         best_top1_eval = top1_acc.avg
@@ -167,8 +178,10 @@ transform_test = torchvision.transforms.Compose([
 use_cuda = True
 train_data=CityFlowNLDataset_Stage2(cfg.DATA, json_path = cfg.DATA.TRAIN_JSON_PATH, transform=transform_test)
 trainloader = DataLoader(dataset=train_data, batch_size=cfg.TRAIN.BATCH_SIZE, shuffle=True, num_workers=cfg.TRAIN.NUM_WORKERS)
+
 val_data=CityFlowNLDataset_Stage2(cfg.DATA,json_path = cfg.DATA.EVAL_JSON_PATH, transform=transform_test,Random = False)
 valloader = DataLoader(dataset=val_data, batch_size=cfg.TRAIN.BATCH_SIZE, shuffle=False, num_workers=cfg.TRAIN.NUM_WORKERS)
+
 os.makedirs(args.name,exist_ok = True)
 
 if cfg.MODEL.NAME == "base":
@@ -182,10 +195,12 @@ elif cfg.MODEL.NAME == "new_stage2":
 
 
 else:
-    assert cfg.MODEL.NAME in ["base","dual-stream","new"] , "unsupported model"
+    assert cfg.MODEL.NAME in ["base","dual-stream","new","new_stage2"] , "unsupported model"
 if args.load_existing:
     if(cfg.MODEL.NAME == "new"):
-        model = load_new_model_from_checkpoint_stage2(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM)
+        model = load_new_model_from_checkpoint(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM)
+    elif(cfg.MODEL.NAME == "new_stage2"):
+        model = load_new_model_from_checkpoint_stage2(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM, efficient_net = True)
     else:
         checkpoint = torch.load(cfg.EVAL.RESTORE_FROM)
         new_state_dict = OrderedDict()
@@ -216,75 +231,90 @@ for epoch in range(cfg.TRAIN.EPOCH):
     evaluate(model,valloader,epoch,cfg,0)
     model.train()
     batch_time = AverageMeter('Time', ':6.3f')
-    data_time = AverageMeter('Data', ':6.3f')
+    # data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
     top1_acc = AverageMeter('Acc@1', ':6.2f')
     top5_acc = AverageMeter('Acc@5', ':6.2f')
     progress = ProgressMeter(
-        len(trainloader)*cfg.TRAIN.ONE_EPOCH_REPEAT,
-        [batch_time, data_time, losses, top1_acc, top5_acc],
+        cfg.TRAIN.ONE_EPOCH_REPEAT,
+        [batch_time, losses, top1_acc, top5_acc],
         prefix="Epoch: [{}]".format(epoch))
-    end = time.time()
+    
+    
     for tmp in range(cfg.TRAIN.ONE_EPOCH_REPEAT):
+        predictions = []
+        truth = []
+        max_mb = -1
+        tot_los = 0
+        end = time.time()
+
         for batch_idx,batch in enumerate(trainloader):
-            # if cfg.DATA.USE_MOTION:
-            #     image, text, bk, id_car, target_ind, ind = batch
-            bk_list,text,tind,tmp_index = batch
-            # else:
-            #     image, text, id_car, target_ind, ind = batch
+            bk, text, target_index, ind = batch
+            
+            mm = bk.size(1)
+            if(mm > max_mb):
+                max_mb = mm
+
             tokens = tokenizer.batch_encode_plus(text, padding='longest',return_tensors='pt')
-            data_time.update(time.time() - end)
+            # data_time.update(time.time() - end)
             global_step+=1
             optimizer.zero_grad()
-            if cfg.DATA.USE_MOTION:
-                pairs,logit_scale,cls_logits = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),image.cuda(),bk.cuda())
-            else:
-                pairs,logit_scale,cls_logits = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),image.cuda())
+            
+            print(bk.shape)
+            pairs,logit_scale = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),bk.cuda())
+            
             logit_scale = logit_scale.mean().exp()
-            loss = 0 
+            
  
-            batch_size = len(ind)
+            visual_embeds,lang_embeds = pairs[index]
+            sim_i_2_t = torch.matmul(torch.mul(logit_scale, visual_embeds), torch.t(lang_embeds))
+            sim_i_2_t = sim_i_2_t.t()
+            # print("Sim matrix shape: ", sim_i_2_t.shape, "  Should be 1 x motion_shape (ie batch size = 1 x classes)")
+            # print("Target index shape: ", target_index.shape)
+            
             # pdb.set_trace()
-            batch_sim = torch.zeros((batch_size, batch_size))
-            for t_i in range(batch_size):
-                for t_j in range(batch_size):
-                    if(ind[t_j] in target_ind[t_i]):
-                        batch_sim[t_i][t_j] = 1
+            loss = F.cross_entropy(sim_i_2_t.cuda(), target_index.cuda())
+            tot_los += loss.item()
 
-            for visual_embeds,lang_embeds in pairs:
-                sim_i_2_t = torch.matmul(torch.mul(logit_scale, visual_embeds), torch.t(lang_embeds))
-                sim_t_2_i = sim_i_2_t.t()
-                loss_t_2_i = nn.BCEWithLogitsLoss()(sim_t_2_i, batch_sim.cuda())
-                loss_i_2_t = nn.BCEWithLogitsLoss()(sim_i_2_t, batch_sim.cuda())
-                loss += (loss_t_2_i+loss_i_2_t)/2
-
-            for cls_logit in cls_logits:
-                #using bcewithlogitsloss (Sigmoid + BCE loss) instead of (Softmax + ) CrossEntropy for multiclass classification
-                # print("*****Logits shape: ",cls_logit.shape)
-                # print("Target shape: ",id_car.shape)
-                loss+= 0.5*nn.BCEWithLogitsLoss()(cls_logit, id_car.cuda())
-
-            acc1, acc5 = accuracy(sim_t_2_i, torch.arange(image.size(0)).cuda(), topk=(1, 5))
-            losses.update(loss.item(), image.size(0))
-            top1_acc.update(acc1[0], image.size(0))
-            top5_acc.update(acc5[0], image.size(0))
-
+            predictions.append(sim_i_2_t)
+            truth.append(target_index)
+            
             loss.backward()
             optimizer.step()
           
             scheduler.step()
-            batch_time.update(time.time() - end)
-            end = time.time()
 
-            if batch_idx % cfg.TRAIN.PRINT_FREQ == 0:
-                progress.display(global_step%(len(trainloader)*30))
+            del bk
+            del text
+            del target_index
+            del tokens
+            del loss
+            del sim_i_2_t
+            del sim_i_2_t
+            del visual_embeds
+            del lang_embeds
+            torch.cuda.empty_cache()
+
+        for i,pred in enumerate(predictions):
+            predictions[i] = F.pad(pred, (0,max_mb - pred.shape[1]), mode='constant', value=0)
+
+        acc1, acc5 = accuracy(torch.tensor(predictions), torch.tensor(truth), topk=(1, 5))
+        # print("Accuracy top 1: ",acc1[0])
+        # print("Accuracy top 5: ",acc5[0])
+        top1_acc.update(acc1[0], 1)
+        top5_acc.update(acc5[0], 1)
+
+        losses.update(tot_los, 1)
+        batch_time.update(time.time() - end)
+        progress.display(tmp)
+            
     
-    if epoch%8==1:
-        checkpoint_file = args.name+"/checkpoint_%d.pth"%epoch
-        torch.save(
-            {"epoch": epoch, "global_step": global_step,
-             "state_dict": model.state_dict(),
-             "optimizer": optimizer.state_dict()}, checkpoint_file)
+    checkpoint_file = args.name+"/checkpoint_%d.pth"%epoch
+    torch.save(
+        {"epoch": epoch, "global_step": global_step,
+            "state_dict": model.state_dict(),
+            "optimizer": optimizer.state_dict()}, checkpoint_file)
+    
     if top1_acc.avg > best_top1:
         best_top1 = top1_acc.avg
         checkpoint_file = args.name+"/checkpoint_best.pth"

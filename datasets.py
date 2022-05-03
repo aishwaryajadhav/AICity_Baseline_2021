@@ -246,7 +246,7 @@ class CityFlowNLDataset_Stage2(Dataset):
         tmp_index = self.all_indexs[index]
         track = self.list_of_tracks[tmp_index]
         targets = track["targets"]
-
+     
         if self.random:
             nl_idx = int(random.uniform(0, len(track["aug_nl"])-1))
             random.shuffle(targets)
@@ -266,7 +266,7 @@ class CityFlowNLDataset_Stage2(Dataset):
             bk = self.transform(bk)
             bk_list.append(bk)
 
-        bk_list = torch.FloatTensor(bk_list)   
+        bk_list = torch.stack(bk_list, axis = 0)   
 
         return bk_list,text,tind,tmp_index
 

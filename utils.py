@@ -4,7 +4,7 @@ import os
 import  torch
 import colorlog
 from collections import OrderedDict
-
+import pdb
 
 def load_new_model_from_checkpoint(model, cp_path, num_classes, embed_dim):
     checkpoint = torch.load(cp_path)
@@ -29,14 +29,21 @@ def load_new_model_from_checkpoint(model, cp_path, num_classes, embed_dim):
     model.load_state_dict(new_state_dict)
     return model
 
-def load_new_model_from_checkpoint_stage2(model, cp_path, num_classes, embed_dim):
+def load_new_model_from_checkpoint_stage2(model, cp_path, num_classes, embed_dim, efficient_net=False):
+    
     checkpoint = torch.load(cp_path)
     new_state_dict = OrderedDict()
     for k, v in checkpoint['state_dict'].items():
         name = k[7:] # remove `module.`
-        new_state_dict[name] = v
-        
-    # print(new_state_dict.keys())
+        if(name[:12] != "vis_backbone" and name[:10] != "vis_car_fc" and name[:11] != "lang_car_fc" and name[:19] != "domian_vis_fc_merge" and name[:13] != "domian_vis_fc" and name[:15] != "vis_backbone_bk"):
+            new_state_dict[name] = v
+    
+    if(efficient_net):
+        orig_dict = model.state_dict() 
+        # x = [s for s in new_state_dict.keys() if s not in orig_dict.keys()]
+        orig_dict.update(new_state_dict)
+        new_state_dict = orig_dict
+
     model.load_state_dict(new_state_dict)
     return model   
 
@@ -128,14 +135,25 @@ def accuracy(output, target, topk=(1,)):
         maxk = max(topk)
         batch_size = target.size(0)
 
+        # print(output.shape)
+        # print(target.shape)
+        # print(batch_size)
+
         _, pred = output.topk(maxk, 1, True, True)
         pred = pred.t()
+
+        # pdb.set_trace()
         correct = pred.eq(target.view(1, -1).expand_as(pred))
-        # pred(correct.shape)
+        
+
         res = []
         for k in topk:
             correct_k = correct[:k].contiguous().view(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
+        
+        del output
+        del target
+        del pred
         return res
 
 class AverageMeter(object):
