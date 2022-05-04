@@ -110,9 +110,7 @@ class CityFlowNLDataset(Dataset):
             nl_idx = 0
             frame_idx = 0
         text = track["subjects"][nl_idx]
-        # if flag:
-        #     text = text.replace("left","888888").replace("right","left").replace("888888","right")
-        
+      
         frame_path = os.path.join(self.data_cfg.CITYFLOW_PATH, track["frames"][frame_idx])
         
         frame = default_loader(frame_path)
@@ -122,25 +120,13 @@ class CityFlowNLDataset(Dataset):
         else:
             box = (int(box[0]-(self.crop_area-1)*box[2]/2.),int(box[1]-(self.crop_area-1)*box[3]/2),int(box[0]+(self.crop_area+1)*box[2]/2.),int(box[1]+(self.crop_area+1)*box[3]/2.))
         
+        #Uncomment
+        # pdb.set_trace()
 
         crop = frame.crop(box)
         if self.transform is not None:
             crop = self.transform(crop)
 
-        if self.data_cfg.USE_MOTION:
-            if self.index_to_uuid[tmp_index] in self.bk_dic:
-                bk = self.bk_dic[self.index_to_uuid[tmp_index]]
-            else:
-                bk = default_loader(self.data_cfg.MOTION_PATH+"/%s.jpg"%self.index_to_uuid[tmp_index])
-                self.bk_dic[self.index_to_uuid[tmp_index]] = bk
-                bk = self.transform(bk)
-                
-            if flag:
-                crop = torch.flip(crop,[1])
-                bk = torch.flip(bk,[1])
-            return crop,text,bk,target,target_ids,tmp_index
-        if flag:
-            crop = torch.flip(crop,[1])
         return crop,text,target,target_ids,tmp_index
 
 #Need to modify for new usecase
@@ -181,10 +167,7 @@ class CityFlowNLInferenceDataset(Dataset):
         crop = frame.crop(box)
         if self.transform is not None:
             crop = self.transform(crop)
-        if self.data_cfg.USE_MOTION:
-            bk = default_loader(self.data_cfg.MOTION_PATH+"/%s.jpg"%track["track_id"])
-            bk = self.transform(bk)
-            return crop,bk,track["track_id"],track["frames_id"]
+        
         return crop,track["track_id"],track["frames_id"]
 
 ####################################Stage 2 Dataset########################################################
@@ -221,20 +204,7 @@ class CityFlowNLDataset_Stage2(Dataset):
         self.all_indexs = list(self.index_to_uuid.keys())
         self.flip_tag = [False]*len(self.list_of_tracks)
         flip_aug = False
-        # if flip_aug:
-        #     for i in range(len(self.list_of_uuids)):
-        #         text = self.list_of_tracks[i]["nl"]
-        #         for j in range(len(text)):
-        #             nl = text[j]
-        #             if "turn" in nl:
-        #                 if "left" in nl:
-        #                     self.all_indexs.append(i)
-        #                     self.flip_tag.append(True)
-        #                     break
-        #                 elif "right" in nl:
-        #                     self.all_indexs.append(i)
-        #                     self.flip_tag.append(True)
-        #                     break
+     
         print(len(self.all_indexs))
         print("data load")
 
@@ -245,18 +215,28 @@ class CityFlowNLDataset_Stage2(Dataset):
    
         tmp_index = self.all_indexs[index]
         track = self.list_of_tracks[tmp_index]
-        targets = track["targets"]
-     
+        targets = track["targets"].copy()
+
         if self.random:
             nl_idx = int(random.uniform(0, len(track["aug_nl"])-1))
             random.shuffle(targets)
         else:
             nl_idx = 2
-
-        #using shuffled (or not) targets and extract index of correct track
-        tind = targets.index(self.index_to_uuid[tmp_index])    
+        
         text = track["aug_nl"][nl_idx]
-    
+        
+        #using shuffled (or not) targets and extract index of correct track
+        tind = targets.index(self.index_to_uuid[tmp_index])   
+        
+        batch_lim = 16
+        if(len(targets) > batch_lim):
+            if(tind >= batch_lim):
+                tind_new = random.randint(0, batch_lim-1)
+                targets[tind_new] = targets[tind]
+                tind = tind_new
+            targets = targets[:batch_lim]
+            
+       
         # if self.index_to_uuid[tmp_index] in self.bk_dic:
         #     bk_list = self.bk_dic[self.index_to_uuid[tmp_index]]
         # else:

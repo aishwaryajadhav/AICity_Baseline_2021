@@ -30,6 +30,9 @@ from collections import OrderedDict
 import pdb
 
 
+torch.multiprocessing.set_sharing_strategy('file_system')
+
+
 
 
 class WarmUpLR(_LRScheduler):
@@ -81,10 +84,7 @@ def evaluate(model,valloader,epoch,cfg,index=0):
     end = time.time()
     with torch.no_grad():
         for batch_idx,batch in enumerate(valloader):
-            if cfg.DATA.USE_MOTION:
-                image,text,bk,id_car, target_ind, ind = batch
-            else:
-                image,text,id_car, target_ind, ind = batch
+            image,text,id_car, target_ind, ind = batch
             tokens = tokenizer.batch_encode_plus(text, padding='longest',
                                                    return_tensors='pt')
             data_time.update(time.time() - end)
@@ -216,10 +216,7 @@ for epoch in range(cfg.TRAIN.EPOCH):
     end = time.time()
     for tmp in range(cfg.TRAIN.ONE_EPOCH_REPEAT):
         for batch_idx,batch in enumerate(trainloader):
-            if cfg.DATA.USE_MOTION:
-                image, text, bk, id_car, target_ind, ind = batch
-            else:
-                image, text, id_car, target_ind, ind = batch
+            image, text, id_car, target_ind, ind = batch
             tokens = tokenizer.batch_encode_plus(text, padding='longest',return_tensors='pt')
             data_time.update(time.time() - end)
             global_step+=1

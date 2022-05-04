@@ -16,6 +16,8 @@ MODEL:
   CHECKPOINT: "/home/azureuser/code/AICity_Baseline_2021/pretrained_baselines/motion_effb3_NOCLS_nlpaug_320.pth"
 TRAIN: 
   BATCH_SIZE: 1
+  ONE_EPOCH_REPEAT: 2
+  EPOCH: 15
 
 TEST:
   QUERY_JSON_PATH: ".~/data_temp/test-queries.json"

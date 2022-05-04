@@ -29,7 +29,8 @@ from transformers import BertTokenizer,RobertaTokenizer, RobertaModel
 from collections import OrderedDict
 import pdb
 
-
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 
 class WarmUpLR(_LRScheduler):
@@ -91,8 +92,7 @@ def evaluate(model,valloader,epoch,cfg,index=0):
             if(mm > max_mb):
                 max_mb = mm
 
-            tokens = tokenizer.batch_encode_plus(text, padding='longest',
-                                                   return_tensors='pt')
+            tokens = tokenizer.batch_encode_plus(text, padding='longest', return_tensors='pt')
             # data_time.update(time.time() - end)
             pairs,logit_scale = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),bk.cuda())
             
@@ -133,6 +133,7 @@ def evaluate(model,valloader,epoch,cfg,index=0):
         
 
         acc1, acc5 = accuracy(torch.concat(predictions, dim = 0).cuda(), torch.concat(truth, dim = 0).cuda(), topk=(1, 5))
+       
         
         top1_acc.update(acc1[0], 1)
         top5_acc.update(acc5[0], 1)
@@ -240,7 +241,7 @@ for epoch in range(cfg.TRAIN.EPOCH):
         [batch_time, losses, top1_acc, top5_acc],
         prefix="Epoch: [{}]".format(epoch))
     
-    
+
     for tmp in range(cfg.TRAIN.ONE_EPOCH_REPEAT):
         predictions = []
         truth = []
@@ -248,7 +249,7 @@ for epoch in range(cfg.TRAIN.EPOCH):
         tot_los = 0
         end = time.time()
 
-        for batch_idx,batch in enumerate(trainloader):
+        for batch_idx,batch in tqdm(enumerate(trainloader)):
             bk, text, target_index, ind = batch
             
             mm = bk.size(1)
@@ -260,13 +261,12 @@ for epoch in range(cfg.TRAIN.EPOCH):
             global_step+=1
             optimizer.zero_grad()
             
-            print(bk.shape)
             pairs,logit_scale = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),bk.cuda())
             
             logit_scale = logit_scale.mean().exp()
             
  
-            visual_embeds,lang_embeds = pairs[index]
+            visual_embeds,lang_embeds = pairs[0]
             sim_i_2_t = torch.matmul(torch.mul(logit_scale, visual_embeds), torch.t(lang_embeds))
             sim_i_2_t = sim_i_2_t.t()
             # print("Sim matrix shape: ", sim_i_2_t.shape, "  Should be 1 x motion_shape (ie batch size = 1 x classes)")
@@ -290,15 +290,15 @@ for epoch in range(cfg.TRAIN.EPOCH):
             del tokens
             del loss
             del sim_i_2_t
-            del sim_i_2_t
             del visual_embeds
             del lang_embeds
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
 
         for i,pred in enumerate(predictions):
             predictions[i] = F.pad(pred, (0,max_mb - pred.shape[1]), mode='constant', value=0)
 
-        acc1, acc5 = accuracy(torch.tensor(predictions), torch.tensor(truth), topk=(1, 5))
+        
+        acc1, acc5 = accuracy(torch.concat(predictions, dim = 0).cuda(), torch.concat(truth, dim = 0).cuda(), topk=(1, 5))
         # print("Accuracy top 1: ",acc1[0])
         # print("Accuracy top 5: ",acc5[0])
         top1_acc.update(acc1[0], 1)
