@@ -13,6 +13,50 @@ from utils import get_logger
 def default_loader(path):
     return Image.open(path).convert('RGB')
 
+class TextTestLoader(Dataset):
+    def __init__(self, text_list):
+        self.text = text_list
+
+    def __len__(self):
+        return len(self.text)
+    
+    def __getitem__(self, index):
+        return self.text[index]
+
+
+class ImageTestLoader(Dataset):
+    def __init__(self, image_list, base_path, crop_area = None, transforms = None, boxes = None):
+        self.image_paths = image_list
+        self.base_path = base_path
+        self.transforms = transforms
+        self.boxes = boxes
+        self.crop_area = crop_area
+
+    def __len__(self):
+        return len(self.image_paths)
+    
+    def __getitem__(self, index):
+        frame_path = os.path.join(self.base_path, self.image_paths[index])
+        frame = default_loader(frame_path)
+        
+        if(self.boxes is not None):
+            box = self.boxes[index]
+            if self.crop_area == 1.6666667:
+                box = (int(box[0]-box[2]/3.),int(box[1]-box[3]/3.),int(box[0]+4*box[2]/3.),int(box[1]+4*box[3]/3.))
+            else:
+                box = (int(box[0]-(self.crop_area-1)*box[2]/2.),int(box[1]-(self.crop_area-1)*box[3]/2),int(box[0]+(self.crop_area+1)*box[2]/2.),int(box[1]+(self.crop_area+1)*box[3]/2.))
+            
+            frame = frame.crop(box)
+
+        if self.transform is not None:
+            frame = self.transform(frame)
+
+        return frame
+
+            
+
+
+
 
 class CityFlowNLDataset(Dataset):
     def __init__(self, data_cfg,json_path,transform = None,Random= True):

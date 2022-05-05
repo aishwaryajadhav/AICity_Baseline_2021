@@ -201,7 +201,7 @@ if args.load_existing:
     if(cfg.MODEL.NAME == "new"):
         model = load_new_model_from_checkpoint(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM)
     elif(cfg.MODEL.NAME == "new_stage2"):
-        model, optim_dict = load_new_model_from_checkpoint_stage2(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM, efficient_net = True)
+        model, optim_dict = load_new_model_from_checkpoint_stage2(model, cfg.MODEL.CHECKPOINT, efficient_net = True)
     else:
         checkpoint = torch.load(cfg.EVAL.RESTORE_FROM)
         new_state_dict = OrderedDict()

@@ -85,8 +85,7 @@ def evaluate(model,valloader,epoch,cfg,index=0):
     with torch.no_grad():
         for batch_idx,batch in enumerate(valloader):
             image,text,id_car, target_ind, ind = batch
-            tokens = tokenizer.batch_encode_plus(text, padding='longest',
-                                                   return_tensors='pt')
+            tokens = tokenizer.batch_encode_plus(text, padding='longest', return_tensors='pt')
             data_time.update(time.time() - end)
             if cfg.DATA.USE_MOTION:
                 pairs,logit_scale,cls_logits = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),image.cuda(),bk.cuda())

@@ -233,9 +233,6 @@ class SiameseNewStage1(torch.nn.Module):
         self.vis_car_fc = nn.Sequential(nn.BatchNorm1d(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim)) #proj layer of car features (for contrastive loss)
 
         self.lang_car_fc = nn.Sequential(nn.LayerNorm(embed_dim),nn.ReLU(),nn.Linear(embed_dim, embed_dim)) #proj layer for language and car contrastive loss
-
-        
-
         
         if self.model_cfg.car_idloss:
             self.id_cls = nn.Sequential(nn.Linear(embed_dim, embed_dim),nn.BatchNorm1d(embed_dim), nn.ReLU(),nn.Linear(embed_dim, self.model_cfg.NUM_CLASS)) #car classification head proj layer
@@ -262,7 +259,7 @@ class SiameseNewStage1(torch.nn.Module):
     def encode_images(self,crops):
         visual_embeds = self.domian_vis_fc(self.vis_backbone(crops)) # embed_dim x 1 x 1
         visual_embeds = visual_embeds.view(visual_embeds.size(0), -1)
-
+        
         visual_car_embeds = self.vis_car_fc(visual_embeds) #contrastive loss car embeds
         visual_embeds = F.normalize(visual_car_embeds, p = 2, dim = -1)
         return visual_embeds

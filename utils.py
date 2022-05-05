@@ -29,7 +29,7 @@ def load_new_model_from_checkpoint(model, cp_path, num_classes, embed_dim):
     model.load_state_dict(new_state_dict)
     return model
 
-def load_new_model_from_checkpoint_stage2(model, cp_path, num_classes, embed_dim, efficient_net=False):
+def load_new_model_from_checkpoint_stage2(model, cp_path,  efficient_net=False):
     
     checkpoint = torch.load(cp_path)
     new_state_dict = OrderedDict()
