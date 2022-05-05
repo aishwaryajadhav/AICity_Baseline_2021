@@ -205,8 +205,8 @@ class CityFlowNLDataset_Stage2(Dataset):
         self.flip_tag = [False]*len(self.list_of_tracks)
         flip_aug = False
      
-        print(len(self.all_indexs))
-        print("data load")
+        # print(len(self.all_indexs))
+        # print("data load")
 
     def __len__(self):
         return len(self.all_indexs)

@@ -353,7 +353,7 @@ class SiameseNewStage2(torch.nn.Module):
         
         motion_embeds = self.domian_vis_fc_bk(self.vis_backbone_bk(torch.squeeze(motion,0)))
         motion_embeds = motion_embeds.view(motion_embeds.size(0), -1)    
-
+        # print(motion_embeds.shape)
         visual_mo_embeds = self.vis_motion_fc(motion_embeds)
         
         visual_embeds = F.normalize(visual_mo_embeds, p = 2, dim = -1)
@@ -367,8 +367,7 @@ class SiameseNewStage2(torch.nn.Module):
 
         motion_embeds = self.domian_vis_fc_bk(self.vis_backbone_bk(torch.squeeze(motion,0)))
         motion_embeds = motion_embeds.view(motion_embeds.size(0), -1) 
-        
-
+        # print(motion_embeds.shape)
         visual_mo_embeds = self.vis_motion_fc(motion_embeds)
      
         lang_mo_embeds = self.lang_motion_fc(lang_embeds) 

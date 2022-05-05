@@ -201,7 +201,7 @@ if args.load_existing:
     if(cfg.MODEL.NAME == "new"):
         model = load_new_model_from_checkpoint(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM)
     elif(cfg.MODEL.NAME == "new_stage2"):
-        model = load_new_model_from_checkpoint_stage2(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM, efficient_net = True)
+        model, optim_dict = load_new_model_from_checkpoint_stage2(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM, efficient_net = True)
     else:
         checkpoint = torch.load(cfg.EVAL.RESTORE_FROM)
         new_state_dict = OrderedDict()
@@ -215,9 +215,14 @@ if use_cuda:
     # cudnn.benchmark = True
 
 
-optimizer = torch.optim.AdamW(model.parameters(), lr = cfg.TRAIN.LR.BASE_LR)
-step_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=len(trainloader)*cfg.TRAIN.ONE_EPOCH_REPEAT*cfg.TRAIN.LR.DELAY , gamma=0.1)
-scheduler = WarmUpLR(lr_scheduler = step_scheduler , warmup_steps=int(1.*cfg.TRAIN.LR.WARMUP_EPOCH*len(trainloader)))
+# optimizer = torch.optim.AdamW(model.parameters(), lr = cfg.TRAIN.LR.BASE_LR)
+# optimizer.load_state_dict(optim_dict)
+print("Base LR: ",cfg.TRAIN.LR.BASE_LR)
+optimizer = torch.optim.SGD(model.parameters(), lr=cfg.TRAIN.LR.BASE_LR, weight_decay=5e-4, momentum=0.9)
+
+# step_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=len(trainloader)*cfg.TRAIN.ONE_EPOCH_REPEAT*cfg.TRAIN.LR.DELAY , gamma=0.1)
+# scheduler = WarmUpLR(lr_scheduler = step_scheduler , warmup_steps=int(1.*cfg.TRAIN.LR.WARMUP_EPOCH*len(trainloader)))
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[4,6,8,10,12,14,16,20,22,24,26,28,30], gamma=0.08)
 
 if cfg.MODEL.BERT_TYPE == "BERT":
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -227,7 +232,7 @@ elif cfg.MODEL.BERT_TYPE == "ROBERTA":
 
 model.train()
 global_step = 0
-best_top1 = 0.
+best_top5 = 0.
 for epoch in range(cfg.TRAIN.EPOCH):
     evaluate(model,valloader,epoch,cfg,0)
     model.train()
@@ -242,14 +247,15 @@ for epoch in range(cfg.TRAIN.EPOCH):
         prefix="Epoch: [{}]".format(epoch))
     
 
-    for tmp in range(cfg.TRAIN.ONE_EPOCH_REPEAT):
-        predictions = []
-        truth = []
-        max_mb = -1
-        tot_los = 0
-        end = time.time()
+    # for tmp in range(cfg.TRAIN.ONE_EPOCH_REPEAT):
+    predictions = []
+    truth = []
+    max_mb = -1
+    tot_los = 0
+    end = time.time()
 
-        for batch_idx,batch in tqdm(enumerate(trainloader)):
+    for batch_idx,batch in tqdm(enumerate(trainloader)):
+        try:
             bk, text, target_index, ind = batch
             
             mm = bk.size(1)
@@ -265,7 +271,7 @@ for epoch in range(cfg.TRAIN.EPOCH):
             
             logit_scale = logit_scale.mean().exp()
             
- 
+
             visual_embeds,lang_embeds = pairs[0]
             sim_i_2_t = torch.matmul(torch.mul(logit_scale, visual_embeds), torch.t(lang_embeds))
             sim_i_2_t = sim_i_2_t.t()
@@ -281,7 +287,7 @@ for epoch in range(cfg.TRAIN.EPOCH):
             
             loss.backward()
             optimizer.step()
-          
+        
             scheduler.step()
 
             del bk
@@ -293,21 +299,23 @@ for epoch in range(cfg.TRAIN.EPOCH):
             del visual_embeds
             del lang_embeds
             # torch.cuda.empty_cache()
+        except Exception as e:
+            print("Batch of size 1 found potentially: ", e)
 
-        for i,pred in enumerate(predictions):
-            predictions[i] = F.pad(pred, (0,max_mb - pred.shape[1]), mode='constant', value=0)
+    for i,pred in enumerate(predictions):
+        predictions[i] = F.pad(pred, (0,max_mb - pred.shape[1]), mode='constant', value=0)
 
+    
+    acc1, acc5 = accuracy(torch.concat(predictions, dim = 0).cuda(), torch.concat(truth, dim = 0).cuda(), topk=(1, 5))
+    # print("Accuracy top 1: ",acc1[0])
+    # print("Accuracy top 5: ",acc5[0])
+    top1_acc.update(acc1[0], 1)
+    top5_acc.update(acc5[0], 1)
+
+    losses.update(tot_los, 1)
+    batch_time.update(time.time() - end)
+    progress.display(epoch)
         
-        acc1, acc5 = accuracy(torch.concat(predictions, dim = 0).cuda(), torch.concat(truth, dim = 0).cuda(), topk=(1, 5))
-        # print("Accuracy top 1: ",acc1[0])
-        # print("Accuracy top 5: ",acc5[0])
-        top1_acc.update(acc1[0], 1)
-        top5_acc.update(acc5[0], 1)
-
-        losses.update(tot_los, 1)
-        batch_time.update(time.time() - end)
-        progress.display(tmp)
-            
     
     checkpoint_file = args.name+"/checkpoint_%d.pth"%epoch
     torch.save(
@@ -315,8 +323,8 @@ for epoch in range(cfg.TRAIN.EPOCH):
             "state_dict": model.state_dict(),
             "optimizer": optimizer.state_dict()}, checkpoint_file)
     
-    if top1_acc.avg > best_top1:
-        best_top1 = top1_acc.avg
+    if top5_acc.avg > best_top5:
+        best_top5 = top5_acc.avg
         checkpoint_file = args.name+"/checkpoint_best.pth"
         torch.save(
             {"epoch": epoch, "global_step": global_step,

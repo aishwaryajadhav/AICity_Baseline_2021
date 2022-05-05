@@ -63,7 +63,7 @@ results = dict()
 for query in query_ids:
     score = 0.
     for i in range(len(nlp_feats1)):
-        q = nlp_feats1[i][query]
+        q = nlp_feats1[i][query] # ensemble results of different models
         score += merge_weights1[i]*np.mean(np.matmul(q,img_feats1[i].T),0)
 
     for i in range(len(nlp_feats2)):
