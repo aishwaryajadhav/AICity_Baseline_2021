@@ -77,8 +77,8 @@ def evaluate(model,valloader,epoch,cfg,index=0):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
-    ap_lang = AverageMeter('Acc@1', ':6.2f')
-    ap_vis = AverageMeter('Acc@5', ':6.2f')
+    ap_lang = AverageMeter('AP Lang', ':6.2f')
+    ap_vis = AverageMeter('AP Vis', ':6.2f')
     progress = ProgressMeter(
         len(valloader),
         [batch_time, data_time, losses, ap_lang, ap_vis],
@@ -219,8 +219,8 @@ for epoch in range(cfg.TRAIN.EPOCH):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
-    ap_lang = AverageMeter('Acc@1', ':6.2f')
-    ap_vis = AverageMeter('Acc@5', ':6.2f')
+    ap_lang = AverageMeter('AP Lang', ':6.2f')
+    ap_vis = AverageMeter('AP Vis', ':6.2f')
     progress = ProgressMeter(
         len(trainloader),
         [batch_time, data_time, losses, ap_lang, ap_vis],
