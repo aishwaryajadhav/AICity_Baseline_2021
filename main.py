@@ -132,6 +132,7 @@ def evaluate(model,valloader,epoch,cfg,index=0):
 
             progress.display(batch_idx)
 
+    sim_loss = sim_loss / len(valloader)
     if sim_loss < best_sim_loss:
         best_sim_loss = sim_loss
         checkpoint_file = args.name+"/checkpoint_best_eval.pth"
