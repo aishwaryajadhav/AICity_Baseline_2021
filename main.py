@@ -69,7 +69,7 @@ class WarmUpLR(_LRScheduler):
 
 best_sim_loss = float('inf')
 def evaluate(model,valloader,epoch,cfg,index=0):
-    global best_top1_eval
+    global best_sim_loss
     # print("Test::::")
     model.eval()
     sim_loss = 0.0
@@ -197,7 +197,7 @@ if use_cuda:
     # cudnn.benchmark = True
 
 
-optimizer = torch.optim.AdamW(model.parameters(), lr = cfg.TRAIN.LR.BASE_LR, weight_decay=5e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr = cfg.TRAIN.LR.BASE_LR, weight_decay=1e-4)
 # step_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=len(trainloader)*cfg.TRAIN.ONE_EPOCH_REPEAT*cfg.TRAIN.LR.DELAY , gamma=0.1)
 # scheduler = WarmUpLR(lr_scheduler = step_scheduler , warmup_steps=int(1.*cfg.TRAIN.LR.WARMUP_EPOCH*len(trainloader)))
 
