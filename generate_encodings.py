@@ -55,36 +55,45 @@ else:
     egen = EncodingGenerator(cfg, cfg.DATA.EVAL_JSON_PATH)
 
 #Generate stage 1 encodings first
-
+print('Starting stage 1 processing')
 #load stage 1 model
-model = SiameseNewStage1(cfg.STAGE1MODEL.MODEL)
-model = load_new_model_from_checkpoint(model, cfg.STAGE1MODEL.MODEL.CHECKPOINT, cfg.STAGE1MODEL.MODEL.NUM_CLASS, cfg.STAGE1MODEL.MODEL.EMBED_DIM)
+model = SiameseNewStage1(cfg.STAGE1MODEL)
+# model = load_new_model_from_checkpoint(model, cfg.STAGE1MODEL.CHECKPOINT, cfg.STAGE1MODEL.NUM_CLASS, cfg.STAGE1MODEL.EMBED_DIM)
+checkpoint = torch.load(cfg.STAGE1MODEL.CHECKPOINT)
+new_state_dict = OrderedDict()
+for k, v in checkpoint['state_dict'].items():
+    name = k[7:] # remove `module.`
+    new_state_dict[name] = v
+model.load_state_dict(new_state_dict)
 
 if use_cuda:
     model.cuda()
-    model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
+    torch.backends.cudnn.benchmark = True
 
-egen.generate_text_encoding(model, egen.query_subjects, egen.subject_ids, os.path.join(args.save_dir, 'stage1_text_subject_encodings.pkl'))
+egen.generate_text_encoding(model, egen.query_subjects, egen.subject_ids, os.path.join(args.save_dir, args.dataset+'_stage1_text_subject_encodings.pkl'))
 
-egen.generate_image_encodings(model, egen.raw_frames, egen.frame_ids, cfg.CITYFLOW_PATH, os.path.join(args.save_dir, 'stage1_crops_car_encodings.pkl'), boxes = egen.boxes)
+egen.generate_image_encodings(model, egen.raw_frames, egen.frame_ids, cfg.DATA.CITYFLOW_PATH, os.path.join(args.save_dir, args.dataset+'_stage1_crops_car_encodings.pkl'), boxes = egen.boxes)
 
 # delete stage 1 model
 del model
 
-
+print('Starting stage 2 processing')
 #load stage 2 model
-model = SiameseNewStage2(cfg.STAGE2MODEL.MODEL)
-model = load_new_model_from_checkpoint(model, cfg.STAGE1MODEL.MODEL.CHECKPOINT, cfg.STAGE1MODEL.MODEL.NUM_CLASS, cfg.STAGE1MODEL.MODEL.EMBED_DIM)
-
-model, _ = load_new_model_from_checkpoint_stage2(model, cfg.STAGE1MODEL.MODEL.CHECKPOINT, efficient_net = True)
+model = SiameseNewStage2(cfg.STAGE2MODEL)
+checkpoint = torch.load(cfg.STAGE2MODEL.CHECKPOINT)
+new_state_dict = OrderedDict()
+for k, v in checkpoint['state_dict'].items():
+    name = k[7:] # remove `module.`
+    new_state_dict[name] = v
+model.load_state_dict(new_state_dict)
 
 if use_cuda:
     model.cuda()
-    model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
+    torch.backends.cudnn.benchmark = True
 
-egen.generate_text_encoding(model, egen.masked_queries, egen.mq_ids, os.path.join(args.save_dir, 'stage2_text_masked_query_encodings.pkl'))
+egen.generate_text_encoding(model, egen.masked_queries, egen.mq_ids, os.path.join(args.save_dir, args.dataset+'_stage2_text_masked_query_encodings.pkl'))
 
-egen.generate_image_encodings(model, egen.motion_images, egen.track_ids, cfg.MOTION_PATH, os.path.join(args.save_dir, 'stage2_motion_encodings.pkl'))
+egen.generate_image_encodings(model, egen.motion_images, egen.track_ids, cfg.DATA.MOTION_PATH, os.path.join(args.save_dir, args.dataset+'_stage2_motion_encodings.pkl'))
 
 # delete stage 2 model
 del model

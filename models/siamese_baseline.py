@@ -285,7 +285,7 @@ class SiameseNewStage1(torch.nn.Module):
         
         #Following is new: classification of tracks based on lang sentences
         if self.model_cfg.lang_idloss:
-            cls_logits = self.id_cls2(visual_embeds)
+            cls_logits = self.id_cls2(lang_embeds)
             cls_logits_results.append(cls_logits)
         
         if self.model_cfg.share_idloss:  

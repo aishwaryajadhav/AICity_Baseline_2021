@@ -51,6 +51,41 @@ _C.TEST.BATCH_SIZE = 128
 _C.TEST.NUM_WORKERS = 6
 _C.TEST.CONTINUE = ""
 
+# Stage 1 configurations
+
+# Model specific configurations.
+_C.STAGE1MODEL = CN()
+
+_C.STAGE1MODEL.NAME = "base" #base or dual-stream
+_C.STAGE1MODEL.BERT_TYPE = "BERT"
+_C.STAGE1MODEL.BERT_NAME = "bert-base-uncased"
+_C.STAGE1MODEL.IMG_ENCODER = "se_resnext50_32x4d" # se_resnext50_32x4d, efficientnet-b2, efficientnet-b3
+_C.STAGE1MODEL.NUM_CLASS = 2055 #train track set size
+_C.STAGE1MODEL.EMBED_DIM = 1024
+_C.STAGE1MODEL.car_idloss = True
+_C.STAGE1MODEL.mo_idloss = True
+_C.STAGE1MODEL.lang_idloss = True
+_C.STAGE1MODEL.share_idloss = True
+_C.STAGE1MODEL.CHECKPOINT = None
+
+
+# Stage 1 configurations
+
+# Model specific configurations.
+_C.STAGE2MODEL = CN()
+
+_C.STAGE2MODEL.NAME = "base" #base or dual-stream
+_C.STAGE2MODEL.BERT_TYPE = "BERT"
+_C.STAGE2MODEL.BERT_NAME = "bert-base-uncased"
+_C.STAGE2MODEL.IMG_ENCODER = "se_resnext50_32x4d" # se_resnext50_32x4d, efficientnet-b2, efficientnet-b3
+_C.STAGE2MODEL.NUM_CLASS = 2055 #train track set size
+_C.STAGE2MODEL.EMBED_DIM = 1024
+_C.STAGE2MODEL.car_idloss = True
+_C.STAGE2MODEL.mo_idloss = True
+_C.STAGE2MODEL.lang_idloss = True
+_C.STAGE2MODEL.share_idloss = True
+_C.STAGE2MODEL.CHECKPOINT = None
+
 
 def get_default_config():
     return _C.clone()

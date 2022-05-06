@@ -15,7 +15,7 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
-
+from sklearn.metrics import average_precision_score
 from config import get_default_config
 from models.siamese_baseline import SiameseBaselineModelv1,SiameseLocalandMotionModelBIG,SiameseNewStage1
 from utils import TqdmToLogger, get_logger,AverageMeter,accuracy,ProgressMeter,load_new_model_from_checkpoint
@@ -67,30 +67,32 @@ class WarmUpLR(_LRScheduler):
         self.__dict__.update(state_dict)
         self.lr_scheduler.load_state_dict(lr_scheduler)
 
-best_top1_eval = 0.
+best_sim_loss = float('inf')
 def evaluate(model,valloader,epoch,cfg,index=0):
     global best_top1_eval
     # print("Test::::")
     model.eval()
+    sim_loss = 0.0
+
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
-    top1_acc = AverageMeter('Acc@1', ':6.2f')
-    top5_acc = AverageMeter('Acc@5', ':6.2f')
+    ap_lang = AverageMeter('Acc@1', ':6.2f')
+    ap_vis = AverageMeter('Acc@5', ':6.2f')
     progress = ProgressMeter(
         len(valloader),
-        [batch_time, data_time, losses, top1_acc, top5_acc],
+        [batch_time, data_time, losses, ap_lang, ap_vis],
         prefix="Test Epoch: [{}]".format(epoch))
     end = time.time()
+    
     with torch.no_grad():
         for batch_idx,batch in enumerate(valloader):
             image,text,id_car, target_ind, ind = batch
             tokens = tokenizer.batch_encode_plus(text, padding='longest', return_tensors='pt')
             data_time.update(time.time() - end)
-            if cfg.DATA.USE_MOTION:
-                pairs,logit_scale,cls_logits = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),image.cuda(),bk.cuda())
-            else:
-                pairs,logit_scale,cls_logits = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),image.cuda())
+            
+            pairs,logit_scale,cls_logits = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),image.cuda())
+            
             logit_scale = logit_scale.mean().exp()
             loss =0 
 
@@ -107,20 +109,31 @@ def evaluate(model,valloader,epoch,cfg,index=0):
 
             sim_t_2_i = sim_i_2_t.t()
             loss_t_2_i = nn.BCEWithLogitsLoss()(sim_t_2_i, batch_sim.cuda())
-            loss_i_2_t = nn.BCEWithLogitsLoss()(sim_i_2_t, batch_sim.cuda())
-            loss += (loss_t_2_i+loss_i_2_t)/2
+            loss_i_2_t = nn.BCEWithLogitsLoss()(sim_i_2_t, batch_sim.T.cuda())
+            loss += (2*loss_t_2_i+loss_i_2_t)/3
+
+            sim_loss += loss
+            for cls_logit in cls_logits:
+                #using bcewithlogitsloss (Sigmoid + BCE loss) instead of (Softmax + ) CrossEntropy for multiclass classification
+                # print("*****Logits shape: ",cls_logit.shape)
+                # print("Target shape: ",id_car.shape)
+                loss+= (nn.BCEWithLogitsLoss()(cls_logit, id_car.cuda())/len(cls_logits))
+
+            ap_vis_t = average_precision_score(id_car, F.sigmoid(cls_logits[0]))
+            ap_lang_t = average_precision_score(id_car, F.sigmoid(cls_logits[1]))
 
             # pdb.set_trace()
-            acc1, acc5 = accuracy(sim_t_2_i, torch.arange(image.size(0)).cuda(), topk=(1, 5))
+            # acc1, acc5 = accuracy(sim_t_2_i, torch.arange(image.size(0)).cuda(), topk=(1, 5))
             losses.update(loss.item(), image.size(0))
-            top1_acc.update(acc1[0], image.size(0))
-            top5_acc.update(acc5[0], image.size(0))
+            ap_lang.update(ap_vis_t, image.size(0))
+            ap_vis.update(ap_lang_t, image.size(0))
             batch_time.update(time.time() - end)
             end = time.time()
 
             progress.display(batch_idx)
-    if top1_acc.avg > best_top1_eval:
-        best_top1_eval = top1_acc.avg
+
+    if sim_loss < best_sim_loss:
+        best_sim_loss = sim_loss
         checkpoint_file = args.name+"/checkpoint_best_eval.pth"
         torch.save(
             {"epoch": epoch, 
@@ -199,80 +212,83 @@ elif cfg.MODEL.BERT_TYPE == "ROBERTA":
 
 model.train()
 global_step = 0
-best_top1 = 0.
+
 for epoch in range(cfg.TRAIN.EPOCH):
     evaluate(model,valloader,epoch,cfg,0)
     model.train()
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
-    top1_acc = AverageMeter('Acc@1', ':6.2f')
-    top5_acc = AverageMeter('Acc@5', ':6.2f')
+    ap_lang = AverageMeter('Acc@1', ':6.2f')
+    ap_vis = AverageMeter('Acc@5', ':6.2f')
     progress = ProgressMeter(
-        len(trainloader)*cfg.TRAIN.ONE_EPOCH_REPEAT,
-        [batch_time, data_time, losses, top1_acc, top5_acc],
+        len(trainloader),
+        [batch_time, data_time, losses, ap_lang, ap_vis],
         prefix="Epoch: [{}]".format(epoch))
     end = time.time()
-    for tmp in range(cfg.TRAIN.ONE_EPOCH_REPEAT):
-        for batch_idx,batch in enumerate(trainloader):
-            image, text, id_car, target_ind, ind = batch
-            tokens = tokenizer.batch_encode_plus(text, padding='longest',return_tensors='pt')
-            data_time.update(time.time() - end)
-            global_step+=1
-            optimizer.zero_grad()
-            if cfg.DATA.USE_MOTION:
-                pairs,logit_scale,cls_logits = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),image.cuda(),bk.cuda())
-            else:
-                pairs,logit_scale,cls_logits = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),image.cuda())
-            logit_scale = logit_scale.mean().exp()
-            loss = 0 
- 
-            batch_size = len(ind)
-            # pdb.set_trace()
-            batch_sim = torch.zeros((batch_size, batch_size))
-            for t_i in range(batch_size):
-                for t_j in range(batch_size):
-                    if(ind[t_j] in target_ind[t_i]):
-                        batch_sim[t_i][t_j] = 1
-
-            for visual_embeds,lang_embeds in pairs:
-                sim_i_2_t = torch.matmul(torch.mul(logit_scale, visual_embeds), torch.t(lang_embeds))
-                sim_t_2_i = sim_i_2_t.t()
-                loss_t_2_i = nn.BCEWithLogitsLoss()(sim_t_2_i, batch_sim.cuda())
-                loss_i_2_t = nn.BCEWithLogitsLoss()(sim_i_2_t, batch_sim.cuda())
-                loss += (loss_t_2_i+loss_i_2_t)/2
-
-            for cls_logit in cls_logits:
-                #using bcewithlogitsloss (Sigmoid + BCE loss) instead of (Softmax + ) CrossEntropy for multiclass classification
-                # print("*****Logits shape: ",cls_logit.shape)
-                # print("Target shape: ",id_car.shape)
-                loss+= 0.5*nn.BCEWithLogitsLoss()(cls_logit, id_car.cuda())
-
-            acc1, acc5 = accuracy(sim_t_2_i, torch.arange(image.size(0)).cuda(), topk=(1, 5))
-            losses.update(loss.item(), image.size(0))
-            top1_acc.update(acc1[0], image.size(0))
-            top5_acc.update(acc5[0], image.size(0))
-
-            loss.backward()
-            optimizer.step()
-          
-            scheduler.step()
-            batch_time.update(time.time() - end)
-            end = time.time()
-
-            if batch_idx % cfg.TRAIN.PRINT_FREQ == 0:
-                progress.display(global_step%(len(trainloader)*30))
     
+    for batch_idx,batch in enumerate(trainloader):
+        image, text, id_car, target_ind, ind = batch
+        tokens = tokenizer.batch_encode_plus(text, padding='longest',return_tensors='pt')
+        data_time.update(time.time() - end)
+        global_step+=1
+        optimizer.zero_grad()
+        if cfg.DATA.USE_MOTION:
+            pairs,logit_scale,cls_logits = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),image.cuda(),bk.cuda())
+        else:
+            pairs,logit_scale,cls_logits = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),image.cuda())
+        logit_scale = logit_scale.mean().exp()
+        loss = 0 
+
+        batch_size = len(ind)
+        # pdb.set_trace()
+        batch_sim = torch.zeros((batch_size, batch_size))
+        for t_i in range(batch_size):
+            for t_j in range(batch_size):
+                if(ind[t_j] in target_ind[t_i]):
+                    batch_sim[t_i][t_j] = 1
+
+        for visual_embeds,lang_embeds in pairs:
+            sim_i_2_t = torch.matmul(torch.mul(logit_scale, visual_embeds), torch.t(lang_embeds))
+            sim_t_2_i = sim_i_2_t.t()
+            loss_t_2_i = nn.BCEWithLogitsLoss()(sim_t_2_i, batch_sim.cuda())
+            loss_i_2_t = nn.BCEWithLogitsLoss()(sim_i_2_t, batch_sim.T.cuda())
+            loss += (2*loss_t_2_i+loss_i_2_t)/3
+
+        for cls_logit in cls_logits:
+            #using bcewithlogitsloss (Sigmoid + BCE loss) instead of (Softmax + ) CrossEntropy for multiclass classification
+            # print("*****Logits shape: ",cls_logit.shape)
+            # print("Target shape: ",id_car.shape)
+            loss+= (nn.BCEWithLogitsLoss()(cls_logit, id_car.cuda())/len(cls_logits))
+
+        ap_vis_t = average_precision_score(id_car, F.sigmoid(cls_logits[0]))
+        ap_lang_t = average_precision_score(id_car, F.sigmoid(cls_logits[1]))
+
+
+        losses.update(loss.item(), image.size(0))
+        ap_lang.update(ap_lang_t, image.size(0))
+        ap_vis.update(ap_vis_t, image.size(0))
+
+        loss.backward()
+        optimizer.step()
+        
+        scheduler.step()
+        batch_time.update(time.time() - end)
+        end = time.time()
+
+        # if batch_idx % cfg.TRAIN.PRINT_FREQ == 0:
+        progress.display(batch_idx)
+
     if epoch%8==1:
         checkpoint_file = args.name+"/checkpoint_%d.pth"%epoch
         torch.save(
             {"epoch": epoch, "global_step": global_step,
              "state_dict": model.state_dict(),
              "optimizer": optimizer.state_dict()}, checkpoint_file)
-    if top1_acc.avg > best_top1:
-        best_top1 = top1_acc.avg
-        checkpoint_file = args.name+"/checkpoint_best.pth"
-        torch.save(
-            {"epoch": epoch, "global_step": global_step,
-             "state_dict": model.state_dict(),
-             "optimizer": optimizer.state_dict()}, checkpoint_file)
+    # if ap_lang.avg > best_top1:
+    #     best_top1 = ap_lang.avg
+    #     checkpoint_file = args.name+"/checkpoint_best.pth"
+    #     torch.save(
+    #         {"epoch": epoch, "global_step": global_step,
+    #          "state_dict": model.state_dict(),
+    #          "optimizer": optimizer.state_dict()}, checkpoint_file)

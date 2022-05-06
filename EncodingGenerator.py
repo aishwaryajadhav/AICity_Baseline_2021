@@ -53,7 +53,7 @@ class EncodingGenerator:
                         torchvision.transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
                         ])
 
-        img_data = ImageTestLoader(img_list,base_path, crop_area=self.data_cfg.CROP_AREA, transforms=transform_test, boxes=boxes)
+        img_data = ImageTestLoader(img_list,base_path, crop_area=self.data_cfg.DATA.CROP_AREA, transforms=transform_test, boxes=boxes)
         imgloader = DataLoader(dataset=img_data, batch_size = self.data_cfg.TEST.BATCH_SIZE, shuffle=False, num_workers=self.data_cfg.TEST.NUM_WORKERS)
 
         model.eval()
@@ -66,18 +66,15 @@ class EncodingGenerator:
                 vis_encoding = vis_encoding.cpu().detach().numpy()
                 print(vis_encoding.shape) #should be batch x (512 or 1024)
                 encodings.append(vis_encoding)
-
-        encodings = list(np.concat(encodings, axis = 0))
-        print(len(encodings))
-
+       
+        encodings = list(np.concatenate(encodings, axis = 0))
         df = pd.DataFrame({'ids': id_list, 'encoding': encodings})
-
-        df = df.groupby('ids').mean()
-        df = df.to_dict()['encoding']
-
-        with open(save_path,'rb') as fs:
+        df = df.groupby('ids')['encoding'].apply(np.mean)
+        df = df.to_dict()
+       
+        with open(save_path,'wb') as fs:
             pickle.dump(df, fs)
-        
+
 
 
     def generate_text_encoding(self, model, text_list, id_list, save_path):
@@ -96,21 +93,22 @@ class EncodingGenerator:
             for text in textloader:
                 tokens = tokenizer.batch_encode_plus(text, padding='longest', return_tensors='pt')
 
-                lang_encoding = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda())
+                lang_encoding = model.encode_text(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda())
 
                 lang_encoding = lang_encoding.cpu().detach().numpy()
-                print(lang_encoding.shape) #should be batch x (512 or 1024)
+                # print(lang_encoding.shape) #should be batch x (512 or 1024)
                 encodings.append(lang_encoding)
+              
 
-        encodings = list(np.concat(encodings, axis = 0))
-        print(len(encodings))
-
+        encodings = list(np.concatenate(encodings, axis = 0))
+        # print(len(encodings))
         df = pd.DataFrame({'ids': id_list, 'encoding': encodings})
+        df = df.groupby('ids')['encoding'].apply(np.mean)
+        df = df.to_dict()
 
-        df = df.groupby('ids').mean()
-        df = df.to_dict()['encoding']
-
-        with open(save_path,'rb') as fs:
+        # print(len(df.keys()))
+       
+        with open(save_path,'wb') as fs:
             pickle.dump(df, fs)
         
 

@@ -48,8 +48,8 @@ class ImageTestLoader(Dataset):
             
             frame = frame.crop(box)
 
-        if self.transform is not None:
-            frame = self.transform(frame)
+        if self.transforms is not None:
+            frame = self.transforms(frame)
 
         return frame
 
