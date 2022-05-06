@@ -18,10 +18,10 @@ from tqdm import tqdm
 
 from models.TripletLoss import TripletLoss
 from config import get_default_config
-from models.siamese_baseline import SiameseBaselineModelv1,SiameseLocalandMotionModelBIG,SiameseNewStage1,SiameseNewStage2, TripletNewStage2
-from utils import TqdmToLogger, get_logger,AverageMeter,accuracy,ProgressMeter,load_new_model_from_checkpoint_stage2
+from models.siamese_baseline import SiameseBaselineModelv1,SiameseLocalandMotionModelBIG,SiameseNewStage1,SiameseNewStage2, TripletNewStage2, TripletNewStage1
+from utils import TqdmToLogger, get_logger,AverageMeter,accuracy,ProgressMeter,load_new_model_from_checkpoint_stage2, load_new_model_from_checkpoint_ts1
 from datasets import CityFlowNLDataset
-from datasets import CityFlowNLDataset_Stage2, CityFlowNLDataset_Stage2_TripletLoss
+from datasets import CityFlowNLDataset_Stage2, CityFlowNLDataset_Stage2_TripletLoss, CityFlowNLDataset_Stage1_TripletLoss
 from torch.optim.lr_scheduler import _LRScheduler
 import torchvision
 import time
@@ -113,10 +113,10 @@ transform_test = torchvision.transforms.Compose([
 ])
 
 use_cuda = True
-train_data=CityFlowNLDataset_Stage2_TripletLoss(cfg.DATA, json_path = cfg.DATA.TRAIN_JSON_PATH, transform=transform_train)
+train_data=CityFlowNLDataset_Stage1_TripletLoss(cfg.DATA, json_path = cfg.DATA.TRAIN_JSON_PATH, transform=transform_train)
 trainloader = DataLoader(dataset=train_data, batch_size=cfg.TRAIN.BATCH_SIZE, shuffle=True, num_workers=cfg.TRAIN.NUM_WORKERS)
 
-val_data=CityFlowNLDataset_Stage2_TripletLoss(cfg.DATA,json_path = cfg.DATA.EVAL_JSON_PATH, transform=transform_test,Random = False)
+val_data=CityFlowNLDataset_Stage1_TripletLoss(cfg.DATA,json_path = cfg.DATA.EVAL_JSON_PATH, transform=transform_test,Random = False)
 valloader = DataLoader(dataset=val_data, batch_size=cfg.TRAIN.BATCH_SIZE, shuffle=False, num_workers=cfg.TRAIN.NUM_WORKERS)
 
 os.makedirs(args.name,exist_ok = True)
@@ -127,19 +127,25 @@ elif cfg.MODEL.NAME == "dual-stream":
     model = SiameseLocalandMotionModelBIG(cfg.MODEL)
 elif cfg.MODEL.NAME == "new":
     model = SiameseNewStage1(cfg.MODEL)
-elif cfg.MODEL.NAME == "new_stage2":
-    model = SiameseNewStage2(cfg.MODEL)
+    
+elif cfg.MODEL.NAME == "triplet_stage1":
+    model = TripletNewStage1(cfg.MODEL)
 elif cfg.MODEL.NAME == "triplet_stage2":
     model = TripletNewStage2(cfg.MODEL)
 else:
-    assert cfg.MODEL.NAME in ["base","dual-stream","new","new_stage2","triplet_stage2"] , "unsupported model"
+    assert cfg.MODEL.NAME in ["base","dual-stream","new","new_stage2","triplet_stage1","triplet_stage2"] , "unsupported model"
 
 
 if args.load_existing:
     if(cfg.MODEL.NAME == "new"):
         model = load_new_model_from_checkpoint(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM)
+    
+    elif(cfg.MODEL.NAME == "triplet_stage1"): 
+        load_new_model_from_checkpoint_ts1(model, cfg.MODEL.CHECKPOINT)
+        
     elif(cfg.MODEL.NAME == "new_stage2" or cfg.MODEL.NAME == "triplet_stage2"):
         model = load_new_model_from_checkpoint_stage2(model, cfg.MODEL.CHECKPOINT, efficient_net = True)
+        
     else:
         checkpoint = torch.load(cfg.EVAL.RESTORE_FROM)
         new_state_dict = OrderedDict()
@@ -147,6 +153,7 @@ if args.load_existing:
             name = k[7:] # remove `module.`
             new_state_dict[name] = v
         model.load_state_dict(new_state_dict)
+        
 if use_cuda:
     model.cuda()
     model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
