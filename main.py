@@ -116,7 +116,7 @@ def evaluate(model,valloader,epoch,cfg,index=0):
 
             sim_loss += loss
             
-            ap_vis_t = average_precision_score(batch_sim, F.sigmoid(sim_t_2_i))
+            ap_vis_t = average_precision_score(batch_sim, F.sigmoid(sim_t_2_i).detach().cpu().numpy())
             
             # pdb.set_trace()
             # acc1, acc5 = accuracy(sim_t_2_i, torch.arange(image.size(0)).cuda(), topk=(1, 5))
@@ -181,6 +181,9 @@ elif cfg.MODEL.NAME == "new":
 
 else:
     assert cfg.MODEL.NAME in ["base","dual-stream","new"] , "unsupported model"
+    
+    
+#***************PLEASE CHANGE THE LOAD WHEN LOADING A MODEL TRAINED BY MEEEE!!!!*****************
 if args.load_existing:
     if(cfg.MODEL.NAME == "new"):
         model = load_new_model_from_checkpoint(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM)
@@ -218,12 +221,12 @@ for epoch in range(cfg.TRAIN.EPOCH):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
-    ap_lang = AverageMeter('AP Lang', ':6.2f')
-    ap_vis = AverageMeter('AP Vis', ':6.2f')
+    # ap_lang = AverageMeter('AP Lang', ':6.2f')
+    # ap_vis = AverageMeter('AP Vis', ':6.2f')
     ap_sim = AverageMeter('AP Sim', ':6.2f')
     progress = ProgressMeter(
         len(trainloader),
-        [batch_time, data_time, losses, ap_lang, ap_vis, ap_sim],
+        [batch_time, data_time, losses, ap_sim],
         prefix="Epoch: [{}]".format(epoch))
     end = time.time()
     
@@ -260,15 +263,15 @@ for epoch in range(cfg.TRAIN.EPOCH):
             # print("Target shape: ",id_car.shape)
             loss+= (nn.BCEWithLogitsLoss()(cls_logit, id_car.cuda())/len(cls_logits))
 
-        ap_vis_t = average_precision_score(id_car, F.sigmoid(cls_logits[0]))
-        ap_lang_t = average_precision_score(id_car, F.sigmoid(cls_logits[1]))
+        # ap_vis_t = average_precision_score(id_car, F.sigmoid(cls_logits[0]).detach().cpu().numpy())
+        # ap_lang_t = average_precision_score(id_car, F.sigmoid(cls_logits[1]).detach().cpu().numpy())
 
-        ap_sim_t = average_precision_score(batch_sim, F.sigmoid(sim_t_2_i))
+        ap_sim_t = average_precision_score(batch_sim, F.sigmoid(sim_t_2_i).detach().cpu().numpy())
 
 
         losses.update(loss.item(), image.size(0))
-        ap_lang.update(ap_lang_t, image.size(0))
-        ap_vis.update(ap_vis_t, image.size(0))
+        # ap_lang.update(ap_lang_t, image.size(0))
+        # ap_vis.update(ap_vis_t, image.size(0))
         ap_sim.update(ap_sim_t, image.size(0))
 
         loss.backward()

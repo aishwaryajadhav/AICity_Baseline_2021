@@ -3,16 +3,16 @@ from yacs.config import CfgNode as CN
 _C = CN()
 
 # DATA process related configurations.
+
 _C.DATA = CN()
-_C.DATA.CITYFLOW_PATH = "/home/azureuser/code/AICity_Baseline_2021/data/"
-_C.DATA.TRAIN_JSON_PATH = "/home/azureuser/code/AICity_Baseline_2021/data/train_nlpaug_modified.json"
-_C.DATA.EVAL_JSON_PATH = "/home/azureuser/code/AICity_Baseline_2021/data/val_nlpaug_modified.json"
+_C.DATA.CITYFLOW_PATH = "../data/"
+_C.DATA.TRAIN_JSON_PATH = "./data/train_nlpaug_modified.json"
+_C.DATA.EVAL_JSON_PATH = "./data/val_nlpaug_modified.json"
 _C.DATA.SIZE = 288
 _C.DATA.CROP_AREA = 1. ## new_w = CROP_AREA * old_w
-_C.DATA.TEST_TRACKS_JSON_PATH = "/home/azureuser/code/AICity_Baseline_2021/data/test-tracks.json"
+_C.DATA.TEST_TRACKS_JSON_PATH = "./data/test-tracks.json"
 _C.DATA.USE_MOTION = False
-_C.DATA.MOTION_PATH ="/home/azureuser/code/AICity_Baseline_2021/data/motion_map_loc/"
-
+_C.DATA.MOTION_PATH = "./data/motion_map"
 
 # Model specific configurations.
 _C.MODEL = CN()
