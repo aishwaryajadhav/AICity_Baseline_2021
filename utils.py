@@ -45,7 +45,7 @@ def load_new_model_from_checkpoint_stage2(model, cp_path,  efficient_net=False):
         new_state_dict = orig_dict
 
     model.load_state_dict(new_state_dict)
-    return model, checkpoint['optimizer']   
+    return model  
 
 
 class TqdmToLogger(io.StringIO):

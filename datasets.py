@@ -8,7 +8,7 @@ from torch.utils.data import Dataset
 import torch.nn.functional as F
 import torchvision
 from utils import get_logger
-
+import numpy as np
 
 def default_loader(path):
     return Image.open(path).convert('RGB')
@@ -293,4 +293,74 @@ class CityFlowNLDataset_Stage2(Dataset):
         bk_list = torch.stack(bk_list, axis = 0)   
 
         return bk_list,text,tind,tmp_index
+
+
+
+
+class CityFlowNLDataset_Stage2_TripletLoss(Dataset):
+    def __init__(self, data_cfg,json_path,transform = None,Random= True):
+        """
+        Dataset for training.
+        :param data_cfg: CfgNode for CityFlow NL.
+        """
+        self.data_cfg = data_cfg.clone()
+        self.crop_area = data_cfg.CROP_AREA
+        self.random = Random
+        with open(json_path) as f:
+            self.tracks = json.load(f)
+
+        self.uuid_to_index = {}
+        self.index_to_uuid = {}
+        
+
+        for i, (k,v) in enumerate(self.tracks.items()):
+            self.uuid_to_index[k] = i
+            self.index_to_uuid[i] = k
+            
+
+        # self.data_pairs = []
+
+        # for k,v in self.tracks.items():
+        #     for tuid in v['targets']:
+        #         if(tuid != k):
+        #             self.data_pairs.append((k,tuid))
+            
+        self.transform = transform
+        # self.bk_dic = {}
+        self._logger = get_logger()
+        
+    
+    def __len__(self):
+        return len(self.index_to_uuid)
+
+
+    def __getitem__(self, index):
+   
+        quid = self.index_to_uuid[index]
+        # qin, neg_in = self.data_pairs[index]
+        query_track = self.tracks[quid]
+
+        if self.random:
+            nl_idx = np.random.randint(0, len(query_track["aug_nl"]))
+            neg_uid = quid
+            while(neg_uid == quid):
+                neg_uid = np.random.choice(query_track["targets"])
+        else:
+            nl_idx = 0
+            if(query_track['targets'][0] == quid and len(query_track['targets']) > 1):
+                neg_uid = query_track['targets'][1]
+            else:
+                neg_uid = query_track['targets'][0]
+          
+        
+        text = query_track["aug_nl"][nl_idx]
+        
+        bk_pos = default_loader(self.data_cfg.MOTION_PATH+"/%s.jpg"%quid)
+        bk_neg = default_loader(self.data_cfg.MOTION_PATH+"/%s.jpg"%neg_uid)
+        
+        if(self.transform is not None):
+            bk_pos = self.transform(bk_pos)
+            bk_neg = self.transform(bk_neg)
+            
+        return text, bk_pos, bk_neg
 

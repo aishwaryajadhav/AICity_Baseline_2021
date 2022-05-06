@@ -242,7 +242,7 @@ for epoch in range(cfg.TRAIN.EPOCH):
     top1_acc = AverageMeter('Acc@1', ':6.2f')
     top5_acc = AverageMeter('Acc@5', ':6.2f')
     progress = ProgressMeter(
-        cfg.TRAIN.ONE_EPOCH_REPEAT,
+        cfg.TRAIN.EPOCH,
         [batch_time, losses, top1_acc, top5_acc],
         prefix="Epoch: [{}]".format(epoch))
     

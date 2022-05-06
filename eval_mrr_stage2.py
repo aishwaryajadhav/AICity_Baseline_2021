@@ -14,10 +14,8 @@ parser.add_argument('--tracks', type=str,help='Train/val tracks json')
 # parser.add_argument('--save_dir', type=str)
 
 args = parser.parse_args()
+threshold = -0.07
 
-
-multiclass_sim = []
-dissim = []
 
 with open(os.path.join(args.encoding_dir, args.dataset+"_stage1_text_subject_encodings.pkl"), 'rb') as f:
     subj_embed = pickle.load(f)
@@ -33,7 +31,7 @@ with open(args.tracks) as f:
 #Stage 1
 
 crop_ids = list(crop_embed.keys())
-sorted_retr = {}
+ds_s2 = {}
 mrr_sum = 0.0
 
 for qid, query in subj_embed.items():
@@ -42,27 +40,48 @@ for qid, query in subj_embed.items():
         cars = crop_embed[cid]
         score = nn.CosineSimilarity(dim = 0)(torch.tensor(query),torch.tensor(cars))
         qscores.append(score)
-        
-        if(cid in tracks[qid]['targets']):
-            multiclass_sim.append(score)
-        else:
-            dissim.append(score)
-
-    ranks = np.argsort(qscores)
-    sorted_retr[qid] = np.array(crop_ids)[ranks]
+      
+    valid_tracks = np.array(qscores) > threshold
+    ds_s2[qid] = np.array(crop_ids)[valid_tracks]
 
     #MRR calc
     # target_rank = ret_tracks.index(qid) + 1
     # mrr_sum += (1/target_rank)        
 
 # with open(os.path.join(args.save_dir, 'stage_1_retrievals.pkl'),'wb') as f:
-#     pickle.dump(sorted_retr, f)
+#     pickle.dump(ds_s2, f)
 
-# print(multiclass_sim)
 
-print('Similar target mean: ', np.mean(multiclass_sim))
-print('Dissimilar target mean: ', np.mean(dissim))
+#Stage 2
 
-# print('Similar target std: ', statistics.pstdev(np.array(multiclass_sim)))
-# print('Dissimilar target std: ', statistics.pstdev(np.array(dissim)))
+with open(os.path.join(args.encoding_dir, args.dataset+"_stage2_text_masked_query_encodings.pkl"), 'rb') as f:
+    qm_embed = pickle.load(f)
 
+with open(os.path.join(args.encoding_dir, args.dataset+"_stage2_motion_encodings.pkl"), 'rb') as f:
+    motion_embed = pickle.load(f)
+
+for k in ds_s2.keys():
+    ds_s2[k] = tracks[k]['targets']
+
+mmr_sum = 0.0
+for qid, query in qm_embed.items():
+    valid_tracks = []
+    for vt_id in ds_s2[qid]:
+        motions = motion_embed[vt_id]
+        score = nn.CosineSimilarity(dim = 0)(torch.tensor(query),torch.tensor(motions))
+        valid_tracks.append(score)
+
+    rank = np.argsort(valid_tracks)
+    ranked_tracks = np.array(ds_s2[qid])[rank]
+
+
+    try:
+        mmr_sum += 1/(list(ranked_tracks).index(qid) + 1)
+    except ValueError as ve:
+        mmr_sum += 0.0
+
+mmr = mmr_sum / len(qm_embed.keys())
+print(mmr)
+
+
+    

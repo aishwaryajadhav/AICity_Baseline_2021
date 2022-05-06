@@ -47,8 +47,14 @@ class EncodingGenerator:
     
 
     def generate_image_encodings(self, model, img_list, id_list, base_path, save_path, boxes = None):
+
+        if(boxes is None):
+            resize_to = self.data_cfg.STAGE2MODEL.DATA_SIZE
+        else:
+            resize_to = self.data_cfg.STAGE1MODEL.DATA_SIZE
+
         transform_test = torchvision.transforms.Compose([
-                        torchvision.transforms.Resize((self.data_cfg.DATA.SIZE,self.data_cfg.DATA.SIZE)),
+                        torchvision.transforms.Resize((resize_to,resize_to)),
                         torchvision.transforms.ToTensor(),
                         torchvision.transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
                         ])
