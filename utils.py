@@ -6,6 +6,20 @@ import colorlog
 from collections import OrderedDict
 import pdb
 
+
+def load_new_model_from_checkpoint_ts1(model, cp_path):
+    checkpoint = torch.load(cp_path)
+    new_state_dict = OrderedDict()
+    for k, v in checkpoint['state_dict'].items():
+        name = k[7:] # remove `module.`
+        # print(name,": ",v.shape)
+        if(name[:15] != "vis_backbone_bk" and name[:16] != "domian_vis_fc_bk" and name[:7] != "attpool"  and name[:19] != "domian_vis_fc_merge" and name[:13] != "vis_motion_fc" and name[:14] != "lang_motion_fc" and name[:6] != "id_cls"):
+            new_state_dict[name] = v
+        
+    # print(new_state_dict.keys())
+    model.load_state_dict(new_state_dict)
+    return model
+
 def load_new_model_from_checkpoint(model, cp_path, num_classes, embed_dim):
     checkpoint = torch.load(cp_path)
     new_state_dict = OrderedDict()

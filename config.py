@@ -34,8 +34,8 @@ _C.MODEL.CHECKPOINT = None
 # Training configurations
 _C.TRAIN = CN()
 _C.TRAIN.ONE_EPOCH_REPEAT = 30
-_C.TRAIN.EPOCH = 40
-_C.TRAIN.BATCH_SIZE = 32
+_C.TRAIN.EPOCH = 60
+_C.TRAIN.BATCH_SIZE = 16
 _C.TRAIN.NUM_WORKERS = 2
 _C.TRAIN.PRINT_FREQ = 20
 _C.TRAIN.LR = CN()
@@ -67,7 +67,6 @@ _C.STAGE1MODEL.mo_idloss = True
 _C.STAGE1MODEL.lang_idloss = True
 _C.STAGE1MODEL.share_idloss = True
 _C.STAGE1MODEL.CHECKPOINT = None
-_C.STAGE1MODEL.DATA_SIZE = 288
 
 
 # Stage 1 configurations
@@ -86,7 +85,7 @@ _C.STAGE2MODEL.mo_idloss = True
 _C.STAGE2MODEL.lang_idloss = True
 _C.STAGE2MODEL.share_idloss = True
 _C.STAGE2MODEL.CHECKPOINT = None
-_C.STAGE2MODEL.DATA_SIZE = 320
+
 
 def get_default_config():
     return _C.clone()

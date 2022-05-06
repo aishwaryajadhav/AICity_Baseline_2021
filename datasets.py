@@ -364,3 +364,104 @@ class CityFlowNLDataset_Stage2_TripletLoss(Dataset):
             
         return text, bk_pos, bk_neg
 
+
+    
+    
+
+class CityFlowNLDataset_Stage1_TripletLoss(Dataset):
+    def __init__(self, data_cfg,json_path,transform = None,Random= True):
+        """
+        Dataset for training.
+        :param data_cfg: CfgNode for CityFlow NL.
+        """
+        self.data_cfg = data_cfg.clone()
+        self.crop_area = data_cfg.CROP_AREA
+        self.random = Random
+        with open(json_path) as f:
+            self.tracks = json.load(f)
+
+        self.uuid_to_index = {}
+        self.index_to_uuid = {}
+        
+        self.all_uids = list(self.tracks.keys())
+        self.neg_samples = {}
+        
+        for i, (k,v) in enumerate(self.tracks.items()):
+            self.uuid_to_index[k] = i
+            self.index_to_uuid[i] = k
+            
+            neg = k
+            while(neg in v['targets']):
+                neg = np.random.choice(self.all_uids)
+            
+            self.neg_samples[k] = neg
+            
+        
+        # self.data_pairs = []
+
+        # for k,v in self.tracks.items():
+        #     for tuid in v['targets']:
+        #         if(tuid != k):
+        #             self.data_pairs.append((k,tuid))
+            
+        self.transform = transform
+        # self.bk_dic = {}
+        self._logger = get_logger()
+        
+    
+    def __len__(self):
+        return len(self.index_to_uuid)
+
+    def process_frame(self,uid, frame_no):
+        frame_path = os.path.join(self.data_cfg.CITYFLOW_PATH, self.tracks[uid]["frames"][frame_no])
+        
+        frame = default_loader(frame_path)
+        box = self.tracks[uid]["boxes"][frame_no]
+        
+        if self.crop_area == 1.6666667:
+            box = (int(box[0]-box[2]/3.),int(box[1]-box[3]/3.),int(box[0]+4*box[2]/3.),int(box[1]+4*box[3]/3.))
+        else:
+            box = (int(box[0]-(self.crop_area-1)*box[2]/2.),int(box[1]-(self.crop_area-1)*box[3]/2),int(box[0]+(self.crop_area+1)*box[2]/2.),int(box[1]+(self.crop_area+1)*box[3]/2.))
+        
+        #Uncomment
+        # pdb.set_trace()
+
+        crop = frame.crop(box)
+        if self.transform is not None:
+            crop = self.transform(crop)
+            
+        return crop
+            
+            
+    def __getitem__(self, index):
+   
+        quid = self.index_to_uuid[index]
+        # qin, neg_in = self.data_pairs[index]
+        query_track = self.tracks[quid]
+     
+        if self.random:
+            nl_idx = np.random.randint(0, len(query_track["aug_nl"]))
+            pos_uid = np.random.choice(query_track["targets"])
+            neg_uid = pos_uid
+            while(neg_uid == pos_uid):
+                neg_uid = np.random.choice(self.all_uids)
+                
+            pos_frame = np.random.randint(0, len(self.tracks[pos_uid]['frames']))
+            neg_frame = np.random.randint(0, len(self.tracks[neg_uid]['frames']))
+        else:
+            nl_idx = 0
+            pos_uid =  quid
+            neg_uid = self.neg_samples[quid]
+            
+            pos_frame = 0
+            neg_frame = 0
+          
+        
+        text = query_track["aug_nl"][nl_idx]
+        
+        bk_pos = self.process_frame(pos_uid, pos_frame)
+        bk_neg = self.process_frame(neg_uid, neg_frame)
+        
+            
+        return text, bk_pos, bk_neg
+
