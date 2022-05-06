@@ -1,7 +1,7 @@
 DATA:
   USE_MOTION: False
-  SIZE: 288
-  CROP_AREA: 1. ## new_w = CROP_AREA* old_w
+  SIZE: 320
+  CROP_AREA: 1.5 ## new_w = CROP_AREA* old_w
 
 
 MODEL:

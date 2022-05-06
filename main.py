@@ -77,11 +77,11 @@ def evaluate(model,valloader,epoch,cfg,index=0):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
-    ap_lang = AverageMeter('AP Lang', ':6.2f')
-    ap_vis = AverageMeter('AP Vis', ':6.2f')
+    # ap_lang = AverageMeter('AP Lang', ':6.2f')
+    ap_vis = AverageMeter('AP Sim', ':6.2f')
     progress = ProgressMeter(
         len(valloader),
-        [batch_time, data_time, losses, ap_lang, ap_vis],
+        [batch_time, data_time, losses, ap_vis],
         prefix="Test Epoch: [{}]".format(epoch))
     end = time.time()
     
@@ -99,6 +99,8 @@ def evaluate(model,valloader,epoch,cfg,index=0):
             # for visual_embeds,lang_embeds in pairs:
             visual_embeds,lang_embeds = pairs[index]
             sim_i_2_t = torch.matmul(torch.mul(logit_scale, visual_embeds), torch.t(lang_embeds))
+            sim_t_2_i = sim_i_2_t.t()
+             
             batch_sim = torch.zeros(sim_i_2_t.shape)
             batch_size = len(ind)
             # pdb.set_trace()
@@ -107,26 +109,20 @@ def evaluate(model,valloader,epoch,cfg,index=0):
                     if(ind[t_j] in target_ind[t_i]):
                         batch_sim[t_i][t_j] = 1
 
-            sim_t_2_i = sim_i_2_t.t()
+            
             loss_t_2_i = nn.BCEWithLogitsLoss()(sim_t_2_i, batch_sim.cuda())
             loss_i_2_t = nn.BCEWithLogitsLoss()(sim_i_2_t, batch_sim.T.cuda())
             loss += (2*loss_t_2_i+loss_i_2_t)/3
 
             sim_loss += loss
-            for cls_logit in cls_logits:
-                #using bcewithlogitsloss (Sigmoid + BCE loss) instead of (Softmax + ) CrossEntropy for multiclass classification
-                # print("*****Logits shape: ",cls_logit.shape)
-                # print("Target shape: ",id_car.shape)
-                loss+= (nn.BCEWithLogitsLoss()(cls_logit, id_car.cuda())/len(cls_logits))
-
-            ap_vis_t = average_precision_score(id_car, F.sigmoid(cls_logits[0]))
-            ap_lang_t = average_precision_score(id_car, F.sigmoid(cls_logits[1]))
-
+            
+            ap_vis_t = average_precision_score(batch_sim, F.sigmoid(sim_t_2_i))
+            
             # pdb.set_trace()
             # acc1, acc5 = accuracy(sim_t_2_i, torch.arange(image.size(0)).cuda(), topk=(1, 5))
             losses.update(loss.item(), image.size(0))
-            ap_lang.update(ap_vis_t, image.size(0))
-            ap_vis.update(ap_lang_t, image.size(0))
+            # ap_lang.update(ap_lang_t, image.size(0))
+            ap_vis.update(ap_vis_t, image.size(0))
             batch_time.update(time.time() - end)
             end = time.time()
 
@@ -201,9 +197,11 @@ if use_cuda:
     # cudnn.benchmark = True
 
 
-optimizer = torch.optim.AdamW(model.parameters(), lr = cfg.TRAIN.LR.BASE_LR)
-step_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=len(trainloader)*cfg.TRAIN.ONE_EPOCH_REPEAT*cfg.TRAIN.LR.DELAY , gamma=0.1)
-scheduler = WarmUpLR(lr_scheduler = step_scheduler , warmup_steps=int(1.*cfg.TRAIN.LR.WARMUP_EPOCH*len(trainloader)))
+optimizer = torch.optim.AdamW(model.parameters(), lr = cfg.TRAIN.LR.BASE_LR, weight_decay=5e-4)
+# step_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=len(trainloader)*cfg.TRAIN.ONE_EPOCH_REPEAT*cfg.TRAIN.LR.DELAY , gamma=0.1)
+# scheduler = WarmUpLR(lr_scheduler = step_scheduler , warmup_steps=int(1.*cfg.TRAIN.LR.WARMUP_EPOCH*len(trainloader)))
+
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[4,6,8,10,12,14,16,20,22,24,26,28,30,32,34,36,38], gamma=0.08)
 
 if cfg.MODEL.BERT_TYPE == "BERT":
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -222,9 +220,10 @@ for epoch in range(cfg.TRAIN.EPOCH):
     losses = AverageMeter('Loss', ':.4e')
     ap_lang = AverageMeter('AP Lang', ':6.2f')
     ap_vis = AverageMeter('AP Vis', ':6.2f')
+    ap_sim = AverageMeter('AP Sim', ':6.2f')
     progress = ProgressMeter(
         len(trainloader),
-        [batch_time, data_time, losses, ap_lang, ap_vis],
+        [batch_time, data_time, losses, ap_lang, ap_vis, ap_sim],
         prefix="Epoch: [{}]".format(epoch))
     end = time.time()
     
@@ -234,10 +233,9 @@ for epoch in range(cfg.TRAIN.EPOCH):
         data_time.update(time.time() - end)
         global_step+=1
         optimizer.zero_grad()
-        if cfg.DATA.USE_MOTION:
-            pairs,logit_scale,cls_logits = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),image.cuda(),bk.cuda())
-        else:
-            pairs,logit_scale,cls_logits = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),image.cuda())
+        
+        pairs,logit_scale,cls_logits = model(tokens['input_ids'].cuda(),tokens['attention_mask'].cuda(),image.cuda())
+        
         logit_scale = logit_scale.mean().exp()
         loss = 0 
 
@@ -249,12 +247,12 @@ for epoch in range(cfg.TRAIN.EPOCH):
                 if(ind[t_j] in target_ind[t_i]):
                     batch_sim[t_i][t_j] = 1
 
-        for visual_embeds,lang_embeds in pairs:
-            sim_i_2_t = torch.matmul(torch.mul(logit_scale, visual_embeds), torch.t(lang_embeds))
-            sim_t_2_i = sim_i_2_t.t()
-            loss_t_2_i = nn.BCEWithLogitsLoss()(sim_t_2_i, batch_sim.cuda())
-            loss_i_2_t = nn.BCEWithLogitsLoss()(sim_i_2_t, batch_sim.T.cuda())
-            loss += (2*loss_t_2_i+loss_i_2_t)/3
+        visual_embeds,lang_embeds = pairs[0]
+        sim_i_2_t = torch.matmul(torch.mul(logit_scale, visual_embeds), torch.t(lang_embeds))
+        sim_t_2_i = sim_i_2_t.t()
+        loss_t_2_i = nn.BCEWithLogitsLoss()(sim_t_2_i, batch_sim.cuda())
+        loss_i_2_t = nn.BCEWithLogitsLoss()(sim_i_2_t, batch_sim.T.cuda())
+        loss += (2*loss_t_2_i+loss_i_2_t)/3
 
         for cls_logit in cls_logits:
             #using bcewithlogitsloss (Sigmoid + BCE loss) instead of (Softmax + ) CrossEntropy for multiclass classification
@@ -265,10 +263,13 @@ for epoch in range(cfg.TRAIN.EPOCH):
         ap_vis_t = average_precision_score(id_car, F.sigmoid(cls_logits[0]))
         ap_lang_t = average_precision_score(id_car, F.sigmoid(cls_logits[1]))
 
+        ap_sim_t = average_precision_score(batch_sim, F.sigmoid(sim_t_2_i))
+
 
         losses.update(loss.item(), image.size(0))
         ap_lang.update(ap_lang_t, image.size(0))
         ap_vis.update(ap_vis_t, image.size(0))
+        ap_sim.update(ap_sim_t, image.size(0))
 
         loss.backward()
         optimizer.step()
