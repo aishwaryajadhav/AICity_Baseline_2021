@@ -67,7 +67,7 @@ class WarmUpLR(_LRScheduler):
         self.__dict__.update(state_dict)
         self.lr_scheduler.load_state_dict(lr_scheduler)
 
-best_sim_loss = float('inf')
+best_sim_loss = 2.5729e-01
 def evaluate(model,valloader,epoch,cfg,index=0):
     global best_sim_loss
     # print("Test::::")
@@ -131,7 +131,8 @@ def evaluate(model,valloader,epoch,cfg,index=0):
     sim_loss = sim_loss / len(valloader)
     if sim_loss < best_sim_loss:
         best_sim_loss = sim_loss
-        checkpoint_file = args.name+"/checkpoint_best_eval.pth"
+        print("New best!:", best_sim_loss)
+        checkpoint_file = args.name+"/checkpoint_best_eval_loss_{}.pth".format(best_sim_loss)
         torch.save(
             {"epoch": epoch, 
              "state_dict": model.state_dict(),
@@ -184,16 +185,15 @@ else:
     
     
 #***************PLEASE CHANGE THE LOAD WHEN LOADING A MODEL TRAINED BY MEEEE!!!!*****************
-if args.load_existing:
-    # if(cfg.MODEL.NAME == "new"):
-    #     model = load_new_model_from_checkpoint(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM)
-    # else:
-    checkpoint = torch.load(cfg.MODEL.CHECKPOINT)
-    new_state_dict = OrderedDict()
-    for k, v in checkpoint['state_dict'].items():
-        name = k[7:] # remove `module.`
-        new_state_dict[name] = v
-    model.load_state_dict(new_state_dict)
+
+# model = load_new_model_from_checkpoint(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM)
+# else:
+checkpoint = torch.load(cfg.MODEL.CHECKPOINT)
+new_state_dict = OrderedDict()
+for k, v in checkpoint['state_dict'].items():
+    name = k[7:] # remove `module.`
+    new_state_dict[name] = v
+model.load_state_dict(new_state_dict)
     
 if use_cuda:
     model.cuda()
@@ -202,10 +202,17 @@ if use_cuda:
 
 
 optimizer = torch.optim.AdamW(model.parameters(), lr = cfg.TRAIN.LR.BASE_LR, weight_decay=1e-4)
+optimizer.load_state_dict(checkpoint['optimizer'])
+
+for param_group in optimizer.param_groups:
+    print(param_group['lr'])
+    break
 # step_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=len(trainloader)*cfg.TRAIN.ONE_EPOCH_REPEAT*cfg.TRAIN.LR.DELAY , gamma=0.1)
 # scheduler = WarmUpLR(lr_scheduler = step_scheduler , warmup_steps=int(1.*cfg.TRAIN.LR.WARMUP_EPOCH*len(trainloader)))
 
-scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[4,6,8,10,12,14,16,20,22,24,26,28,30,32,34,36,38], gamma=0.07)
+# scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[4,6,8,10,12,14,16,20,22,24,26,28,30,32,34,36,38], gamma=0.8)
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[i for i in range(2,80,2)], gamma=0.8)
+
 
 if cfg.MODEL.BERT_TYPE == "BERT":
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
