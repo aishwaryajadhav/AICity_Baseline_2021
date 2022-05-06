@@ -67,7 +67,7 @@ class WarmUpLR(_LRScheduler):
         self.__dict__.update(state_dict)
         self.lr_scheduler.load_state_dict(lr_scheduler)
 
-best_sim_loss = float('inf')
+best_sim_loss = 2.5729e-01
 def evaluate(model,valloader,epoch,cfg,index=0):
     global best_sim_loss
     # print("Test::::")
@@ -116,7 +116,7 @@ def evaluate(model,valloader,epoch,cfg,index=0):
 
             sim_loss += loss
             
-            ap_vis_t = average_precision_score(batch_sim, F.sigmoid(sim_t_2_i))
+            ap_vis_t = average_precision_score(batch_sim, F.sigmoid(sim_t_2_i).detach().cpu().numpy())
             
             # pdb.set_trace()
             # acc1, acc5 = accuracy(sim_t_2_i, torch.arange(image.size(0)).cuda(), topk=(1, 5))
@@ -131,7 +131,8 @@ def evaluate(model,valloader,epoch,cfg,index=0):
     sim_loss = sim_loss / len(valloader)
     if sim_loss < best_sim_loss:
         best_sim_loss = sim_loss
-        checkpoint_file = args.name+"/checkpoint_best_eval.pth"
+        print("New best!:", best_sim_loss)
+        checkpoint_file = args.name+"/checkpoint_best_eval_loss_{}.pth".format(best_sim_loss)
         torch.save(
             {"epoch": epoch, 
              "state_dict": model.state_dict(),
@@ -181,16 +182,19 @@ elif cfg.MODEL.NAME == "new":
 
 else:
     assert cfg.MODEL.NAME in ["base","dual-stream","new"] , "unsupported model"
-if args.load_existing:
-    if(cfg.MODEL.NAME == "new"):
-        model = load_new_model_from_checkpoint(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM)
-    else:
-        checkpoint = torch.load(cfg.EVAL.RESTORE_FROM)
-        new_state_dict = OrderedDict()
-        for k, v in checkpoint['state_dict'].items():
-            name = k[7:] # remove `module.`
-            new_state_dict[name] = v
-        model.load_state_dict(new_state_dict)
+    
+    
+#***************PLEASE CHANGE THE LOAD WHEN LOADING A MODEL TRAINED BY MEEEE!!!!*****************
+
+# model = load_new_model_from_checkpoint(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM)
+# else:
+checkpoint = torch.load(cfg.MODEL.CHECKPOINT)
+new_state_dict = OrderedDict()
+for k, v in checkpoint['state_dict'].items():
+    name = k[7:] # remove `module.`
+    new_state_dict[name] = v
+model.load_state_dict(new_state_dict)
+    
 if use_cuda:
     model.cuda()
     model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
@@ -198,10 +202,17 @@ if use_cuda:
 
 
 optimizer = torch.optim.AdamW(model.parameters(), lr = cfg.TRAIN.LR.BASE_LR, weight_decay=1e-4)
+optimizer.load_state_dict(checkpoint['optimizer'])
+
+for param_group in optimizer.param_groups:
+    print(param_group['lr'])
+    break
 # step_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=len(trainloader)*cfg.TRAIN.ONE_EPOCH_REPEAT*cfg.TRAIN.LR.DELAY , gamma=0.1)
 # scheduler = WarmUpLR(lr_scheduler = step_scheduler , warmup_steps=int(1.*cfg.TRAIN.LR.WARMUP_EPOCH*len(trainloader)))
 
-scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[4,6,8,10,12,14,16,20,22,24,26,28,30,32,34,36,38], gamma=0.08)
+# scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[4,6,8,10,12,14,16,20,22,24,26,28,30,32,34,36,38], gamma=0.8)
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[i for i in range(2,80,2)], gamma=0.8)
+
 
 if cfg.MODEL.BERT_TYPE == "BERT":
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -218,12 +229,12 @@ for epoch in range(cfg.TRAIN.EPOCH):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
-    ap_lang = AverageMeter('AP Lang', ':6.2f')
-    ap_vis = AverageMeter('AP Vis', ':6.2f')
+    # ap_lang = AverageMeter('AP Lang', ':6.2f')
+    # ap_vis = AverageMeter('AP Vis', ':6.2f')
     ap_sim = AverageMeter('AP Sim', ':6.2f')
     progress = ProgressMeter(
         len(trainloader),
-        [batch_time, data_time, losses, ap_lang, ap_vis, ap_sim],
+        [batch_time, data_time, losses, ap_sim],
         prefix="Epoch: [{}]".format(epoch))
     end = time.time()
     
@@ -260,15 +271,15 @@ for epoch in range(cfg.TRAIN.EPOCH):
             # print("Target shape: ",id_car.shape)
             loss+= (nn.BCEWithLogitsLoss()(cls_logit, id_car.cuda())/len(cls_logits))
 
-        ap_vis_t = average_precision_score(id_car, F.sigmoid(cls_logits[0]))
-        ap_lang_t = average_precision_score(id_car, F.sigmoid(cls_logits[1]))
+        # ap_vis_t = average_precision_score(id_car, F.sigmoid(cls_logits[0]).detach().cpu().numpy())
+        # ap_lang_t = average_precision_score(id_car, F.sigmoid(cls_logits[1]).detach().cpu().numpy())
 
-        ap_sim_t = average_precision_score(batch_sim, F.sigmoid(sim_t_2_i))
+        ap_sim_t = average_precision_score(batch_sim, F.sigmoid(sim_t_2_i).detach().cpu().numpy())
 
 
         losses.update(loss.item(), image.size(0))
-        ap_lang.update(ap_lang_t, image.size(0))
-        ap_vis.update(ap_vis_t, image.size(0))
+        # ap_lang.update(ap_lang_t, image.size(0))
+        # ap_vis.update(ap_vis_t, image.size(0))
         ap_sim.update(ap_sim_t, image.size(0))
 
         loss.backward()
