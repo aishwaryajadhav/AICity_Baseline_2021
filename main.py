@@ -185,15 +185,16 @@ else:
     
 #***************PLEASE CHANGE THE LOAD WHEN LOADING A MODEL TRAINED BY MEEEE!!!!*****************
 if args.load_existing:
-    if(cfg.MODEL.NAME == "new"):
-        model = load_new_model_from_checkpoint(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM)
-    else:
-        checkpoint = torch.load(cfg.EVAL.RESTORE_FROM)
-        new_state_dict = OrderedDict()
-        for k, v in checkpoint['state_dict'].items():
-            name = k[7:] # remove `module.`
-            new_state_dict[name] = v
-        model.load_state_dict(new_state_dict)
+    # if(cfg.MODEL.NAME == "new"):
+    #     model = load_new_model_from_checkpoint(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM)
+    # else:
+    checkpoint = torch.load(cfg.MODEL.CHECKPOINT)
+    new_state_dict = OrderedDict()
+    for k, v in checkpoint['state_dict'].items():
+        name = k[7:] # remove `module.`
+        new_state_dict[name] = v
+    model.load_state_dict(new_state_dict)
+    
 if use_cuda:
     model.cuda()
     model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
@@ -204,7 +205,7 @@ optimizer = torch.optim.AdamW(model.parameters(), lr = cfg.TRAIN.LR.BASE_LR, wei
 # step_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=len(trainloader)*cfg.TRAIN.ONE_EPOCH_REPEAT*cfg.TRAIN.LR.DELAY , gamma=0.1)
 # scheduler = WarmUpLR(lr_scheduler = step_scheduler , warmup_steps=int(1.*cfg.TRAIN.LR.WARMUP_EPOCH*len(trainloader)))
 
-scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[4,6,8,10,12,14,16,20,22,24,26,28,30,32,34,36,38], gamma=0.08)
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[4,6,8,10,12,14,16,20,22,24,26,28,30,32,34,36,38], gamma=0.07)
 
 if cfg.MODEL.BERT_TYPE == "BERT":
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
