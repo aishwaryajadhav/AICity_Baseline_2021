@@ -343,7 +343,8 @@ class CityFlowNLDataset_Stage2_TripletLoss(Dataset):
         if self.random:
             nl_idx = np.random.randint(0, len(query_track["aug_nl"]))
             neg_uid = quid
-            while(neg_uid == quid):
+            
+            while(neg_uid == quid and len(query_track["targets"]) > 1):
                 neg_uid = np.random.choice(query_track["targets"])
         else:
             nl_idx = 0

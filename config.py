@@ -67,6 +67,7 @@ _C.STAGE1MODEL.mo_idloss = True
 _C.STAGE1MODEL.lang_idloss = True
 _C.STAGE1MODEL.share_idloss = True
 _C.STAGE1MODEL.CHECKPOINT = None
+_C.STAGE1MODEL.DATA_SIZE = None
 
 
 # Stage 1 configurations
@@ -85,6 +86,7 @@ _C.STAGE2MODEL.mo_idloss = True
 _C.STAGE2MODEL.lang_idloss = True
 _C.STAGE2MODEL.share_idloss = True
 _C.STAGE2MODEL.CHECKPOINT = None
+_C.STAGE2MODEL.DATA_SIZE = None
 
 
 def get_default_config():

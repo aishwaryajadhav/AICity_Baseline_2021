@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
 
 from config import get_default_config
-from models.siamese_baseline import SiameseNewStage1, SiameseNewStage2
+from models.siamese_baseline import SiameseNewStage1, SiameseNewStage2, TripletNewStage2, TripletNewStage1
 from utils import load_new_model_from_checkpoint,load_new_model_from_checkpoint_stage2
 from datasets import CityFlowNLDataset
 from datasets import CityFlowNLInferenceDataset
@@ -57,7 +57,7 @@ else:
 #Generate stage 1 encodings first
 print('Starting stage 1 processing')
 #load stage 1 model
-model = SiameseNewStage1(cfg.STAGE1MODEL)
+model = TripletNewStage1(cfg.STAGE1MODEL)
 # model = load_new_model_from_checkpoint(model, cfg.STAGE1MODEL.CHECKPOINT, cfg.STAGE1MODEL.NUM_CLASS, cfg.STAGE1MODEL.EMBED_DIM)
 checkpoint = torch.load(cfg.STAGE1MODEL.CHECKPOINT)
 new_state_dict = OrderedDict()
@@ -79,7 +79,7 @@ del model
 
 print('Starting stage 2 processing')
 #load stage 2 model
-model = SiameseNewStage2(cfg.STAGE2MODEL)
+model = TripletNewStage2(cfg.STAGE2MODEL)
 checkpoint = torch.load(cfg.STAGE2MODEL.CHECKPOINT)
 new_state_dict = OrderedDict()
 for k, v in checkpoint['state_dict'].items():

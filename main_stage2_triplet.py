@@ -96,6 +96,7 @@ args = parser.parse_args()
 cfg = get_default_config()
 cfg.merge_from_file(args.config)
 
+os.makedirs(args.name, exist_ok=True)
 
 print("Cuda: ",torch.cuda.is_available())
 
@@ -138,15 +139,17 @@ else:
 if args.load_existing:
     if(cfg.MODEL.NAME == "new"):
         model = load_new_model_from_checkpoint(model, cfg.MODEL.CHECKPOINT, cfg.MODEL.NUM_CLASS, cfg.MODEL.EMBED_DIM)
-    elif(cfg.MODEL.NAME == "new_stage2" or cfg.MODEL.NAME == "triplet_stage2"):
+    # elif(cfg.MODEL.NAME == "new_stage2" or cfg.MODEL.NAME == "triplet_stage2"):
+    elif(cfg.MODEL.NAME == "new_stage2"):
         model = load_new_model_from_checkpoint_stage2(model, cfg.MODEL.CHECKPOINT, efficient_net = True)
     else:
-        checkpoint = torch.load(cfg.EVAL.RESTORE_FROM)
+        checkpoint = torch.load(cfg.MODEL.CHECKPOINT)
         new_state_dict = OrderedDict()
         for k, v in checkpoint['state_dict'].items():
             name = k[7:] # remove `module.`
             new_state_dict[name] = v
         model.load_state_dict(new_state_dict)
+
 if use_cuda:
     model.cuda()
     model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
@@ -155,7 +158,7 @@ if use_cuda:
 
 optimizer = torch.optim.AdamW(model.parameters(), lr = cfg.TRAIN.LR.BASE_LR, weight_decay=1e-4)
 
-scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[4,6,8,10,12,14,16,20,22,24,26,28,30,32,34,36,38], gamma=0.08)
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[i for i in range(4,80,2)], gamma=0.08)
 
 loss_fn = TripletLoss(margin = 2.0)
 

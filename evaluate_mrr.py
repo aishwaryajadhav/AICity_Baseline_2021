@@ -16,6 +16,17 @@ parser.add_argument('--tracks', type=str,help='Train/val tracks json')
 args = parser.parse_args()
 
 
+def getTopKRecall(retreived, actual):
+    i = 0
+    actual = set(actual)
+    retr = set(retreived)
+
+    retr_len = len(actual.intersection(retr))
+
+    return retr_len / len(actual)
+
+
+
 multiclass_sim = []
 dissim = []
 
@@ -35,6 +46,10 @@ with open(args.tracks) as f:
 crop_ids = list(crop_embed.keys())
 sorted_retr = {}
 mrr_sum = 0.0
+top5_count =0 
+top10_count = 0
+top15_count = 0
+
 
 for qid, query in subj_embed.items():
     qscores = []
@@ -51,6 +66,12 @@ for qid, query in subj_embed.items():
     ranks = np.argsort(qscores)
     sorted_retr[qid] = np.array(crop_ids)[ranks]
 
+    top5_count += getTopKRecall(sorted_retr[qid][:5],tracks[qid]['targets'])
+    
+    top10_count += getTopKRecall(sorted_retr[qid][:10],tracks[qid]['targets'])
+    
+    top15_count += getTopKRecall(sorted_retr[qid][:15],tracks[qid]['targets'])
+    
     #MRR calc
     # target_rank = ret_tracks.index(qid) + 1
     # mrr_sum += (1/target_rank)        
@@ -65,4 +86,8 @@ print('Dissimilar target mean: ', np.mean(dissim))
 
 # print('Similar target std: ', statistics.pstdev(np.array(multiclass_sim)))
 # print('Dissimilar target std: ', statistics.pstdev(np.array(dissim)))
+
+print("Top 5 Recall: ", top5_count/len(subj_embed.keys()))
+print("Top 10 Recall: ", top10_count/len(subj_embed.keys()))
+print("Top 15 Recall: ", top15_count/len(subj_embed.keys()))
 

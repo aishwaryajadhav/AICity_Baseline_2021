@@ -14,7 +14,7 @@ parser.add_argument('--tracks', type=str,help='Train/val tracks json')
 # parser.add_argument('--save_dir', type=str)
 
 args = parser.parse_args()
-threshold = -0.07
+threshold = 0.6
 
 
 with open(os.path.join(args.encoding_dir, args.dataset+"_stage1_text_subject_encodings.pkl"), 'rb') as f:
@@ -52,6 +52,16 @@ for qid, query in subj_embed.items():
 #     pickle.dump(ds_s2, f)
 
 
+def getTopKRecall(retreived, actual):
+    i = 0
+    actual = set(actual)
+    retr = set(retreived)
+
+    retr_len = len(actual.intersection(retr))
+
+    return retr_len / len(actual)
+
+
 #Stage 2
 
 with open(os.path.join(args.encoding_dir, args.dataset+"_stage2_text_masked_query_encodings.pkl"), 'rb') as f:
@@ -60,9 +70,12 @@ with open(os.path.join(args.encoding_dir, args.dataset+"_stage2_text_masked_quer
 with open(os.path.join(args.encoding_dir, args.dataset+"_stage2_motion_encodings.pkl"), 'rb') as f:
     motion_embed = pickle.load(f)
 
-for k in ds_s2.keys():
-    ds_s2[k] = tracks[k]['targets']
+# for k in ds_s2.keys():
+#     ds_s2[k] = tracks[k]['targets']
 
+top5_count =0 
+top10_count = 0
+top15_count = 0
 mmr_sum = 0.0
 for qid, query in qm_embed.items():
     valid_tracks = []
@@ -80,8 +93,20 @@ for qid, query in qm_embed.items():
     except ValueError as ve:
         mmr_sum += 0.0
 
+    
+    top5_count += getTopKRecall(ranked_tracks[:5],[qid])
+    
+    top10_count += getTopKRecall(ranked_tracks[:10],[qid])
+    
+    # top15_count += getTopKRecall(ranked_tracks[:15],[qid])
+
 mmr = mmr_sum / len(qm_embed.keys())
 print(mmr)
+
+print("Top 5 Recall: ", top5_count/len(qm_embed.items()))
+print("Top 10 Recall: ", top10_count/len(qm_embed.items()))
+# print("Top 15 Recall: ", top15_count/len(subj_embed.keys()))
+
 
 
     
