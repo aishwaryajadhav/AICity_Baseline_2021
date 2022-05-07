@@ -5,7 +5,7 @@ DATA:
 
 
 MODEL:
-  NAME: "new"
+  NAME: "triplet_stage1"
   BERT_TYPE: "ROBERTA"
   BERT_NAME: "roberta-large"
   IMG_ENCODER: "se_resnext50_32x4d"
